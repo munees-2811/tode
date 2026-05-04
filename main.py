@@ -8,7 +8,7 @@ from ui.main_window import MainWindow
 
 def main():
     root = tk.Tk()
-    root.title("Video Annotation Tool  |  YOLOv8")
+    root.title("Video Annotation Tool  |  YOLO26x")
     root.geometry("1280x800")
     root.minsize(1024, 700)
 

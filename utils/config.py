@@ -6,7 +6,7 @@ BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR      = os.path.join(BASE_DIR, "output")
 FRAMES_DIR      = os.path.join(OUTPUT_DIR, "frames")
 LABELS_DIR      = os.path.join(OUTPUT_DIR, "labels")
-YOLO_MODEL_PATH = os.path.join(BASE_DIR, "models", "yolov8n.pt")   # auto-downloads if missing
+YOLO_MODEL_PATH = os.path.join(BASE_DIR, "models", "yolo26x.pt")   # auto-downloads if missing
 
 # ── Frame extraction ───────────────────────────────────────────────────────────
 DEFAULT_FPS_STEP   = 1        # extract every N-th frame

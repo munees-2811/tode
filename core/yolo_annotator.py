@@ -1,4 +1,4 @@
-"""YOLOv8 inference wrapper — thread-safe, with logging."""
+"""YOLO26x inference wrapper — thread-safe, with logging."""
 import os
 import threading
 from typing import List
@@ -34,7 +34,7 @@ class YOLOAnnotator:
             weights = (
                 self.model_path
                 if os.path.exists(self.model_path)
-                else "yolov8n.pt"
+                else "yolo26x.pt"
             )
             log.info(f"Loading YOLO weights: {weights}")
             try:
