@@ -4,11 +4,11 @@ Right-hand panel with two tabs:
   MANUAL— class selector, box list, delete button
 """
 import tkinter as tk
-from tkinter import ttk
-from typing import List, Callable, Dict
+from tkinter import ttk, filedialog
+from typing import List, Callable, Dict, Optional
 
 from models.annotation_model import BoundingBox
-from utils.config import BG_PANEL, BG_DARK, ACCENT, TEXT_LIGHT
+from utils.config import BG_PANEL, BG_DARK, ACCENT, TEXT_LIGHT, YOLO_MODELS, YOLO_DEFAULT_MODEL
 
 
 class AnnotationPanel(tk.Frame):
@@ -21,16 +21,18 @@ class AnnotationPanel(tk.Frame):
         on_clear_click:      Callable,
         on_delete_box:       Callable = None,   # callable(box_index)
         on_conf_change:      Callable = None,   # callable(float)
+        on_model_change:     Callable = None,   # callable(model_name: str)
     ):
         super().__init__(master, bg=BG_PANEL, width=280)
         self.pack_propagate(False)
 
-        self._on_yolo       = on_yolo_click
-        self._on_yolo_all   = on_yolo_all_click
-        self._on_save       = on_save_click
-        self._on_clear      = on_clear_click
-        self._on_delete_box = on_delete_box
+        self._on_yolo        = on_yolo_click
+        self._on_yolo_all    = on_yolo_all_click
+        self._on_save        = on_save_click
+        self._on_clear       = on_clear_click
+        self._on_delete_box  = on_delete_box
         self._on_conf_change = on_conf_change
+        self._on_model_change = on_model_change
 
         # Current class names from YOLO model
         self._class_names: Dict[int, str] = {}
@@ -90,10 +92,36 @@ class AnnotationPanel(tk.Frame):
         self._build_bottom_buttons()
 
     def _build_auto_tab(self, parent):
+        # ── Model selector ────────────────────────────────────────────────────
+        tk.Label(
+            parent, text="YOLO Model",
+            bg=BG_PANEL, fg=TEXT_LIGHT, font=("Consolas", 9),
+        ).pack(pady=(10, 2), padx=10, anchor=tk.W)
+
+        model_row = tk.Frame(parent, bg=BG_PANEL)
+        model_row.pack(fill=tk.X, padx=10, pady=(0, 6))
+
+        self.model_var = tk.StringVar(value=YOLO_DEFAULT_MODEL)
+        self._model_combo = ttk.Combobox(
+            model_row, textvariable=self.model_var,
+            values=YOLO_MODELS, font=("Consolas", 9), state="readonly", width=14,
+        )
+        self._model_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
+        self._model_combo.bind("<<ComboboxSelected>>",
+                               lambda _e: self._on_model_selected())
+
+        tk.Button(
+            model_row, text="📂",
+            command=self._browse_model,
+            bg=BG_DARK, fg=TEXT_LIGHT, relief=tk.FLAT,
+            padx=6, font=("Consolas", 10), cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(4, 0))
+
+        # ── Confidence ────────────────────────────────────────────────────────
         tk.Label(
             parent, text="Confidence Threshold",
             bg=BG_PANEL, fg=TEXT_LIGHT, font=("Consolas", 9),
-        ).pack(pady=(10, 2), padx=10, anchor=tk.W)
+        ).pack(pady=(4, 2), padx=10, anchor=tk.W)
 
         conf_row = tk.Frame(parent, bg=BG_PANEL)
         conf_row.pack(fill=tk.X, padx=10)
@@ -242,6 +270,24 @@ class AnnotationPanel(tk.Frame):
             padx=8, pady=6, font=("Consolas", 9, "bold"), cursor="hand2",
         ).pack(fill=tk.X, padx=8, pady=(2, 8))
 
+    # ── model callbacks ───────────────────────────────────────────────────────
+    def _on_model_selected(self):
+        if self._on_model_change:
+            self._on_model_change(self.model_var.get())
+
+    def _browse_model(self):
+        path = filedialog.askopenfilename(
+            title="Select YOLO .pt weights",
+            filetypes=[("PyTorch weights", "*.pt"), ("All files", "*.*")],
+        )
+        if path:
+            self.model_var.set(path)
+            current = list(self._model_combo["values"])
+            if path not in current:
+                self._model_combo["values"] = [path] + current
+            if self._on_model_change:
+                self._on_model_change(path)
+
     # ── callbacks ─────────────────────────────────────────────────────────────
     def _on_conf_slider(self, val):
         self.conf_label.config(text=f"{float(val):.2f}")
@@ -282,6 +328,9 @@ class AnnotationPanel(tk.Frame):
 
     def get_confidence_threshold(self) -> float:
         return float(self.conf_var.get())
+
+    def get_model_name(self) -> str:
+        return self.model_var.get()
 
     def get_class_filter(self) -> List[str]:
         """Return list of class names to keep, or [] for all."""

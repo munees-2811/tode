@@ -13,6 +13,27 @@ DEFAULT_FPS_STEP   = 1        # extract every N-th frame
 FRAME_WIDTH        = 640
 FRAME_HEIGHT       = 480
 
+# ── YOLO model catalogue ─────────────────────────────────────────────────────
+# Models are auto-downloaded by ultralytics on first use.
+YOLO_MODELS = [
+    "yolo26x",
+    "yolo26l",
+    "yolo26m",
+    "yolo26s",
+    "yolo26n",
+    "yolo11x",
+    "yolo11l",
+    "yolo11m",
+    "yolo11s",
+    "yolo11n",
+    "yolov8x",
+    "yolov8l",
+    "yolov8m",
+    "yolov8s",
+    "yolov8n",
+]
+YOLO_DEFAULT_MODEL = "yolo26x"
+
 # ── YOLO inference ────────────────────────────────────────────────────────────
 YOLO_CONFIDENCE    = 0.45
 YOLO_IOU_THRESHOLD = 0.45

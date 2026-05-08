@@ -4,7 +4,7 @@ import threading
 from typing import List
 from ultralytics import YOLO
 from models.annotation_model import BoundingBox
-from utils.config import YOLO_MODEL_PATH, YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD
+from utils.config import YOLO_MODEL_PATH, YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD, YOLO_DEFAULT_MODEL
 from utils.logger import get_logger
 
 log = get_logger("core.YOLOAnnotator")
@@ -31,22 +31,32 @@ class YOLOAnnotator:
         with self._lock:
             if self._model is not None:
                 return
-            weights = (
-                self.model_path
-                if os.path.exists(self.model_path)
-                else "yolo26x.pt"
+            self._load_weights(self.model_path)
+
+    def reload(self, model_name_or_path: str):
+        """Swap to a different model at runtime (name or full .pt path)."""
+        with self._lock:
+            self._model = None
+            self.model_path = model_name_or_path
+        self._load_weights(model_name_or_path)
+
+    def _load_weights(self, weights: str):
+        # Accept bare model name ("yolo26x") or full path
+        if not os.path.exists(weights):
+            # bare name → let ultralytics resolve / auto-download
+            if not weights.endswith(".pt"):
+                weights = weights + ".pt"
+        log.info(f"Loading YOLO weights: {weights}")
+        try:
+            self._model = YOLO(weights)
+            log.info(
+                f"YOLO model loaded — "
+                f"{len(self._model.names)} classes available"
             )
-            log.info(f"Loading YOLO weights: {weights}")
-            try:
-                self._model = YOLO(weights)
-                log.info(
-                    f"YOLO model loaded — "
-                    f"{len(self._model.names)} classes available"
-                )
-                log.debug(f"Classes: {self._model.names}")
-            except Exception as exc:
-                log.error(f"Failed to load YOLO model: {exc}", exc_info=True)
-                raise
+            log.debug(f"Classes: {self._model.names}")
+        except Exception as exc:
+            log.error(f"Failed to load YOLO model: {exc}", exc_info=True)
+            raise
 
     def is_loaded(self) -> bool:
         return self._model is not None

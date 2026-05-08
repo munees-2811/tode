@@ -68,6 +68,7 @@ class MainWindow(tk.Frame):
             content,
             on_frame_change=self._on_frame_change,
             on_box_drawn=self._on_box_drawn,
+            on_open_request=self._open_source,
         )
         self.player.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                          padx=6, pady=6)
@@ -80,6 +81,7 @@ class MainWindow(tk.Frame):
             on_clear_click    = self._clear_frame,
             on_delete_box     = self._delete_box,
             on_conf_change    = self._on_conf_change,
+            on_model_change   = self._on_model_change,
         )
         self.ann_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
 
@@ -471,6 +473,30 @@ class MainWindow(tk.Frame):
         if self.manager:
             self.manager.yolo.confidence = val
             log.debug(f"Confidence updated → {val:.2f}")
+
+    # ── model change ──────────────────────────────────────────────────────────
+    def _on_model_change(self, model: str):
+        yolo = self.manager.yolo if self.manager else None
+        target = yolo or __import__("core.yolo_annotator", fromlist=["YOLOAnnotator"]).YOLOAnnotator()
+        self._set_status(f"Loading model '{model}'…")
+        log.info(f"Model change requested → {model}")
+
+        def _work():
+            if self.manager:
+                self.manager.yolo.reload(model)
+            else:
+                target.reload(model)
+
+        def _done(_):
+            name = model.split("/")[-1].split("\\")[-1]
+            self._set_status(f"Model ready: {name}")
+
+        def _err(exc):
+            messagebox.showerror("Model Load Error",
+                                 f"Could not load '{model}':\n{exc}")
+            self._set_status("Model load failed.")
+
+        self._run_in_thread(_work, _done, _err)
 
     # ── YOLO single frame ─────────────────────────────────────────────────────
     def _run_yolo(self):

@@ -17,7 +17,8 @@ class VideoPlayer(tk.Frame):
     MODE_DRAW = "draw"
 
     def __init__(self, master, on_frame_change: Callable = None,
-                 on_box_drawn: Callable = None):
+                 on_box_drawn: Callable = None,
+                 on_open_request: Callable = None):
         """
         Parameters
         ----------
@@ -26,8 +27,9 @@ class VideoPlayer(tk.Frame):
                           called when user finishes drawing a box (normalised coords)
         """
         super().__init__(master, bg=BG_DARK)
-        self._on_change   = on_frame_change
-        self._on_box_drawn = on_box_drawn
+        self._on_change      = on_frame_change
+        self._on_box_drawn   = on_box_drawn
+        self._on_open_request = on_open_request
 
         self._loader      = None
         self._indices: List[int] = []
@@ -85,12 +87,14 @@ class VideoPlayer(tk.Frame):
         # ── canvas ────────────────────────────────────────────────────────────
         self.canvas = tk.Canvas(self, bg="#0d0d1a", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.canvas.bind("<Configure>", lambda _e: self._redraw())
+        self.canvas.bind("<Configure>", lambda _e: self._on_canvas_resize())
 
         # mouse events (always bound — gated by mode inside handlers)
         self.canvas.bind("<ButtonPress-1>",   self._on_mouse_press)
         self.canvas.bind("<B1-Motion>",       self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_release)
+
+        self._draw_empty_hint()
 
         # ── controls ──────────────────────────────────────────────────────────
         ctrl = tk.Frame(self, bg=BG_PANEL)
@@ -128,6 +132,7 @@ class VideoPlayer(tk.Frame):
         self._loader  = loader
         self._indices = indices
         self._pos     = 0
+        self._clear_hint()
         if indices:
             self.slider.config(to=len(indices) - 1)
             self._show_current()
@@ -271,6 +276,43 @@ class VideoPlayer(tk.Frame):
         if self._on_change:
             self._on_change(idx, frame)
         self._redraw()
+
+    def _on_canvas_resize(self):
+        if self._current_frame is None:
+            self._draw_empty_hint()
+        else:
+            self._redraw()
+
+    # ── empty-state hint ──────────────────────────────────────────────────────
+    def _draw_empty_hint(self):
+        self.canvas.delete("hint")
+        cw = self.canvas.winfo_width()  or 640
+        ch = self.canvas.winfo_height() or 480
+        cx, cy = cw // 2, ch // 2
+        self.canvas.create_text(
+            cx, cy - 28, text="📂",
+            font=("Consolas", 36), fill="#3a3a5e", tags="hint",
+        )
+        self.canvas.create_text(
+            cx, cy + 20,
+            text="Click to open a video or image",
+            font=("Consolas", 13), fill="#4a4a6e", tags="hint",
+        )
+        self.canvas.create_text(
+            cx, cy + 44,
+            text="— or use the toolbar buttons above —",
+            font=("Consolas", 9), fill="#333355", tags="hint",
+        )
+        self.canvas.tag_bind("hint", "<Button-1>", self._on_hint_click)
+        self.canvas.config(cursor="hand2")
+
+    def _clear_hint(self):
+        self.canvas.delete("hint")
+        self.canvas.config(cursor="arrow")
+
+    def _on_hint_click(self, _event):
+        if self._on_open_request:
+            self._on_open_request()
 
     # ── rendering ─────────────────────────────────────────────────────────────
     def _redraw(self):
