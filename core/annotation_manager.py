@@ -1,4 +1,6 @@
 """Orchestrates annotation lifecycle — with logging."""
+import os
+import cv2
 from typing import Dict, Optional, List
 from models.annotation_model import FrameAnnotation, BoundingBox
 from core.video_loader       import VideoLoader
@@ -51,10 +53,15 @@ class AnnotationManager:
             ann = FrameAnnotation(frame_index=frame_index, frame_path=saved_path)
             self._annotations[frame_index] = ann
         else:
-            frame = self.loader.read_frame(frame_index)
+            frame = self._read_frame_reliable(ann, frame_index)
 
         ann.clear_boxes()
-        if frame is not None:
+        if frame is None:
+            log.warning(
+                f"Frame {frame_index} could not be read — "
+                "skipping YOLO inference"
+            )
+        else:
             boxes = self.yolo.annotate_frame(frame)
             for box in boxes:
                 ann.add_box(box)
@@ -63,6 +70,24 @@ class AnnotationManager:
             f"{len(ann.boxes)} box(es)"
         )
         return ann
+
+    def _read_frame_reliable(self, ann: FrameAnnotation, frame_index: int):
+        """
+        Prefer the saved frame on disk over re-seeking the source video.
+        cv2.VideoCapture.set(CAP_PROP_POS_FRAMES, n) is unreliable for many
+        codecs (H.264, B-frames, variable bitrate) and can return the wrong
+        frame or None. The on-disk PNG is the source of truth — it was
+        written during extraction and matches what the user sees.
+        """
+        if ann.frame_path and os.path.exists(ann.frame_path):
+            frame = cv2.imread(ann.frame_path)
+            if frame is not None:
+                return frame
+            log.debug(
+                f"Saved frame on disk unreadable, falling back to video: "
+                f"{ann.frame_path}"
+            )
+        return self.loader.read_frame(frame_index)
 
     def auto_annotate_all(self, progress_callback=None):
         indices = self.all_frame_indices()
