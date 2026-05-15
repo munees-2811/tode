@@ -4,9 +4,11 @@ Supports two modes:
   VIEW   : navigate frames only
   DRAW   : click-drag to draw a new bounding box
 """
+import os
 import tkinter as tk
 from typing import List, Callable, Optional
 
+import cv2
 from models.annotation_model import BoundingBox
 from utils.image_utils import draw_boxes, bgr_to_photoimage, resize_frame
 from utils.config import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT, BOX_COLOR
@@ -30,6 +32,7 @@ class VideoPlayer(tk.Frame):
         self._on_change      = on_frame_change
         self._on_box_drawn   = on_box_drawn
         self._on_open_request = on_open_request
+        self._frame_path_provider: Optional[Callable[[int], str]] = None
 
         self._loader      = None
         self._indices: List[int] = []
@@ -128,10 +131,12 @@ class VideoPlayer(tk.Frame):
         self.idx_label.pack(pady=(0, 4))
 
     # ── public API ────────────────────────────────────────────────────────────
-    def load(self, loader, indices: List[int]):
+    def load(self, loader, indices: List[int],
+             frame_path_provider: Optional[Callable[[int], str]] = None):
         self._loader  = loader
         self._indices = indices
         self._pos     = 0
+        self._frame_path_provider = frame_path_provider
         self._clear_hint()
         if indices:
             self.slider.config(to=len(indices) - 1)
@@ -265,7 +270,7 @@ class VideoPlayer(tk.Frame):
         if not self._loader or not self._indices:
             return
         idx   = self._indices[self._pos]
-        frame = self._loader.read_frame(idx)
+        frame = self._read_frame_reliable(idx)
         if frame is None:
             return
         self._current_frame = frame
@@ -282,6 +287,23 @@ class VideoPlayer(tk.Frame):
             self._draw_empty_hint()
         else:
             self._redraw()
+
+    def _read_frame_reliable(self, idx: int):
+        """
+        Prefer the saved PNG over re-seeking the video — cv2 seek is
+        unreliable on H.264/variable-rate videos and can return wrong
+        frames or None mid-navigation.
+        """
+        if self._frame_path_provider:
+            try:
+                path = self._frame_path_provider(idx)
+            except Exception:
+                path = None
+            if path and os.path.exists(path):
+                img = cv2.imread(path)
+                if img is not None:
+                    return img
+        return self._loader.read_frame(idx)
 
     # ── empty-state hint ──────────────────────────────────────────────────────
     def _draw_empty_hint(self):

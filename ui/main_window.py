@@ -326,7 +326,10 @@ class MainWindow(tk.Frame):
 
         def _done(mgr: AnnotationManager):
             self.manager = mgr
-            self.player.load(mgr.loader, mgr.all_frame_indices())
+            self.player.load(
+                mgr.loader, mgr.all_frame_indices(),
+                frame_path_provider=self._frame_path_for,
+            )
             self._set_status(
                 f"Video loaded — '{os.path.basename(path)}'  "
                 f"| {mgr.loader.total_frames} frames "
@@ -395,7 +398,10 @@ class MainWindow(tk.Frame):
         def _done(mgr: AnnotationManager):
             self.manager = mgr
             indices = mgr.all_frame_indices()
-            self.player.load(mgr.loader, indices)
+            self.player.load(
+                mgr.loader, indices,
+                frame_path_provider=self._frame_path_for,
+            )
             noun = "images" if is_folder else "image"
             self._set_status(
                 f"{'Folder' if is_folder else 'Image'} loaded — "
@@ -659,6 +665,13 @@ class MainWindow(tk.Frame):
             self._log_viewer.lift()
 
     # ── helpers ───────────────────────────────────────────────────────────────
+    def _frame_path_for(self, frame_index: int) -> str:
+        """Resolve the on-disk PNG path for a frame index, or '' if missing."""
+        if self.manager is None:
+            return ""
+        ann = self.manager.get_annotation(frame_index)
+        return ann.frame_path if ann else ""
+
     def _require_manager(self) -> bool:
         if self.manager is None:
             messagebox.showinfo("No source",
