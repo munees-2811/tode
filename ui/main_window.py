@@ -10,6 +10,7 @@ from core.image_loader          import ImageLoader
 from core.image_frame_extractor import ImageFrameExtractor
 from core.yolo_annotator        import YOLOAnnotator
 from core.annotation_manager   import AnnotationManager
+from core.exporter             import DatasetExporter
 from models.annotation_model   import BoundingBox
 from storage.frame_storage      import FrameStorage
 from storage.label_storage      import LabelStorage
@@ -17,8 +18,9 @@ from ui.video_player            import VideoPlayer
 from ui.annotation_panel        import AnnotationPanel
 from ui.log_viewer              import LogViewer
 from ui.source_dialog           import SourceDialog
+from ui.export_dialog           import ExportDialog
 from utils.logger               import get_logger
-from utils.config               import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT
+from utils.config               import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT, OUTPUT_DIR
 
 log = get_logger("ui.MainWindow")
 
@@ -110,6 +112,7 @@ class MainWindow(tk.Frame):
         btn("💾  Save",       self._save,               color="#2d7a4e")
         btn("⚡  YOLO Frame", self._run_yolo)
         btn("🔁  YOLO All",   self._run_yolo_all,       color="#5a4fbf")
+        btn("📤  Export",    self._export_dataset,     color="#1f7a8c")
         btn("📋  Logs",       self._show_logs,           color="#3a4a6a")
 
         self._source_badge = tk.Label(
@@ -578,6 +581,63 @@ class MainWindow(tk.Frame):
             self._set_status(f"Saved {count} annotation file(s).")
 
         self._run_in_thread(_work, _done)
+
+    # ── export dataset ────────────────────────────────────────────────────────
+    def _export_dataset(self):
+        if not self._require_manager() or self._busy:
+            return
+        if self.manager.annotated_count == 0:
+            messagebox.showinfo(
+                "Nothing to export",
+                "No annotated frames yet. Annotate at least one frame, "
+                "then export.",
+            )
+            return
+
+        default_out = os.path.join(OUTPUT_DIR, "exports")
+        dlg = ExportDialog(self.master, default_dir=default_out)
+        if not dlg.result:
+            return
+
+        fmt     = dlg.result["format"]
+        out_dir = dlg.result["output_dir"]
+        self._set_status(f"Exporting as {fmt.upper()} → {out_dir}…")
+        log.info(f"Export started — fmt={fmt}, out={out_dir}")
+
+        exporter = DatasetExporter(
+            annotations = self.manager._annotations,
+            class_names = self.manager.yolo.class_names,
+            output_dir  = out_dir,
+        )
+
+        def _progress(done, total):
+            self.after(0, lambda d=done, t=total: self._set_status(
+                f"Exporting… {d}/{t}"
+            ))
+
+        def _work():
+            return exporter.export(fmt=fmt, progress_callback=_progress)
+
+        def _done(summary: dict):
+            self._set_status(
+                f"Export complete — {summary['images']} images, "
+                f"{summary['labels']} labels, "
+                f"{len(summary['classes'])} class(es) → {summary['output_dir']}"
+            )
+            messagebox.showinfo(
+                "Export complete",
+                f"Format : {summary['format'].upper()}\n"
+                f"Images : {summary['images']}\n"
+                f"Labels : {summary['labels']}\n"
+                f"Classes: {', '.join(summary['classes'])}\n\n"
+                f"Saved to:\n{summary['output_dir']}",
+            )
+
+        def _err(exc):
+            messagebox.showerror("Export Error", str(exc))
+            self._set_status("Export failed.")
+
+        self._run_in_thread(_work, _done, _err)
 
     # ── clear current frame ───────────────────────────────────────────────────
     def _clear_frame(self):

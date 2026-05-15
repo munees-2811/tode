@@ -12,6 +12,7 @@ A desktop application for annotating video frames and images with bounding boxes
 - **Video & image support** — load MP4/AVI/MOV/MKV videos, single images, or entire image folders (recursive)
 - **YouTube download** — paste a URL, preview metadata, choose quality, and download before annotating
 - **YOLO-format labels** — annotations saved as standard `.txt` files (class cx cy w h, normalised) compatible with Ultralytics training pipelines
+- **Dataset export** — one-click export to **YOLO** (images/ + labels/ + data.yaml) or **COCO** (single annotations.json) format. Non-annotated frames are skipped automatically
 - **Class names persist** — a `classes.json` sidecar keeps label names across sessions
 - **Log viewer** — live in-app log window for debugging
 
@@ -112,20 +113,67 @@ Models are **auto-downloaded** from the Ultralytics hub on first use.
 
 ---
 
-## Output structure
+## Exporting (YOLO or COCO)
+
+Click **📤 Export** in the toolbar to package your annotations as a training-ready dataset.
+
+A dialog asks for:
+- **Format** — YOLO or COCO
+- **Output folder** — defaults to `output/exports/`
+
+**Only annotated frames are exported.** Frames with no boxes are skipped entirely, so image and label files always match 1-to-1 (`img_000003.png` ↔ `img_000003.txt`).
+
+### YOLO export layout
+
+```
+export_dir/
+├── images/
+│   ├── img_000000.png
+│   └── img_000002.png         ← frame 1 skipped (no annotations)
+├── labels/
+│   ├── img_000000.txt
+│   └── img_000002.txt
+├── classes.txt                ← one class name per line
+└── data.yaml                  ← Ultralytics dataset config
+```
+
+`data.yaml` is ready for training:
+```bash
+yolo train data=export_dir/data.yaml model=yolo26x.pt epochs=100
+```
+
+### COCO export layout
+
+```
+export_dir/
+├── images/
+│   ├── img_000000.png
+│   └── img_000002.png
+└── annotations.json           ← COCO JSON (images + annotations + categories)
+```
+
+The JSON contains the full COCO schema:
+- `images` — file_name, width, height, id
+- `annotations` — bbox in `[x_top_left, y_top_left, width, height]` pixels, area, category_id, image_id
+- `categories` — id (1-based), name
+
+---
+
+## Output structure (raw working directory)
 
 ```
 output/
-  frames/
-    <video_name>/
-      frame_000000.png
-      frame_000001.png
-      ...
-  labels/
-    <video_name>/
-      frame_000000.txt    ← YOLO format label
-      frame_000001.txt
-      classes.json        ← class id → name mapping
+├── frames/
+│   └── <video_name>/
+│       ├── frame_000000.png
+│       └── frame_000001.png
+├── labels/
+│   └── <video_name>/
+│       ├── frame_000000.txt    ← YOLO format label (working copy)
+│       ├── frame_000001.txt
+│       └── classes.json        ← class id → name mapping
+└── exports/                    ← created by the Export button
+    └── <your_export_name>/
 ```
 
 Label format (`.txt`):
@@ -149,6 +197,7 @@ Video_Annotaion/
 │   ├── image_frame_extractor.py
 │   ├── yolo_annotator.py       # YOLO inference wrapper (thread-safe)
 │   ├── annotation_manager.py   # orchestrates the full pipeline
+│   ├── exporter.py             # YOLO / COCO dataset export
 │   └── youtube_downloader.py   # yt-dlp wrapper
 ├── models/
 │   └── annotation_model.py     # BoundingBox, FrameAnnotation dataclasses
@@ -160,6 +209,7 @@ Video_Annotaion/
 │   ├── video_player.py         # canvas + navigation controls
 │   ├── annotation_panel.py     # right panel (YOLO settings, box list)
 │   ├── source_dialog.py        # tabbed open-source dialog
+│   ├── export_dialog.py        # YOLO / COCO export dialog
 │   ├── label_editor.py         # label rename dialog
 │   └── log_viewer.py           # live log window
 └── utils/
