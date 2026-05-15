@@ -4,9 +4,10 @@ core/youtube_downloader.py
 Downloads a YouTube video (or any yt-dlp-supported URL) to disk,
 reporting progress via a callback.
 
-Requires:  pip install yt-dlp
+Requires:  pip install yt-dlp imageio-ffmpeg
 """
 import os
+import shutil
 import threading
 from typing import Callable, Optional
 from utils.config import OUTPUT_DIR
@@ -16,6 +17,25 @@ log = get_logger("core.YouTubeDownloader")
 
 DOWNLOAD_DIR = os.path.join(OUTPUT_DIR, "youtube_downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+
+def resolve_ffmpeg() -> Optional[str]:
+    """
+    Return a path to an ffmpeg executable, or None if not available.
+
+    Resolution order:
+      1. System ffmpeg on PATH (lets users override the bundled one)
+      2. imageio-ffmpeg bundled binary (works cross-platform, no install)
+    """
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as exc:
+        log.warning(f"imageio-ffmpeg not available: {exc}")
+        return None
 
 
 class YouTubeDownloader:
@@ -106,6 +126,23 @@ class YouTubeDownloader:
             "progress_hooks": [self._progress_hook],
             "merge_output_format": "mp4",
         }
+
+        # Resolve FFmpeg — yt-dlp needs it to merge video+audio streams.
+        ffmpeg_path = resolve_ffmpeg()
+        if ffmpeg_path:
+            ydl_opts["ffmpeg_location"] = ffmpeg_path
+            log.info(f"Using ffmpeg: {ffmpeg_path}")
+        else:
+            log.warning(
+                "FFmpeg not found and imageio-ffmpeg unavailable — "
+                "falling back to single-stream download (lower quality)."
+            )
+            # Force single-stream download so no merge is attempted.
+            ydl_opts["format"] = (
+                "best[ext=mp4]/best"
+                if self.quality == "best"
+                else f"best[height<={self.quality}][ext=mp4]/best[height<={self.quality}]"
+            )
 
         log.info(f"Starting yt-dlp download — quality={self.quality}")
         try:

@@ -32,23 +32,41 @@ class FrameExtractor:
         )
 
     def extract(self) -> Generator[Tuple[int, object, str], None, None]:
+        """
+        Sequential extraction — does NOT seek per frame, which avoids the
+        H.264 "mmco: unref short failure" silent-drop pattern caused by
+        random seeks into bitstreams with B-frames or bad DTS/PTS.
+        Dropped frames (decode errors) are counted and reported.
+        """
         total    = self.estimated_frame_count
         extracted = 0
+        dropped   = 0
         log.info(f"Starting extraction — ~{total} frames expected")
 
         self.loader.seek(0)
-        for frame_idx in range(0, self.loader.total_frames, self.step):
-            frame = self.loader.read_frame(frame_idx)
+        # Walk every frame sequentially; only yield every Nth (step).
+        for raw_idx in range(self.loader.total_frames):
+            idx, frame = self.loader.read_next_frame()
             if frame is None:
-                log.warning(f"Skipped frame {frame_idx} — decode failed")
+                dropped += 1
+                log.warning(f"Skipped frame ~{raw_idx} — decode failed (codec bitstream error)")
                 continue
+            if (idx if idx is not None else raw_idx) % self.step != 0:
+                continue
+            frame_idx = idx if idx is not None else raw_idx
             saved_path = self._save(frame_idx, frame) if self.save_frames else ""
             extracted += 1
             if extracted % 100 == 0:
                 log.debug(f"Extracted {extracted}/{total} frames…")
             yield frame_idx, frame, saved_path
 
-        log.info(f"Extraction complete — {extracted} frames processed")
+        if dropped:
+            log.warning(
+                f"Extraction finished with {dropped} dropped frame(s) — "
+                f"video bitstream had decode errors. {extracted} frames saved."
+            )
+        else:
+            log.info(f"Extraction complete — {extracted} frames processed")
 
     def extract_single(self, frame_index: int) -> Tuple[object, str]:
         log.debug(f"Extracting single frame {frame_index}")
