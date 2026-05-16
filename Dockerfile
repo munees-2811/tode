@@ -1,12 +1,13 @@
 # syntax=docker/dockerfile:1.6
 #
-# Video Annotation Tool — container image
+# tode_anotation.v1.1.1 — container image
+# Source: https://github.com/tedo001/tode_anotation.v1.1.1
 #
 # Build:
-#   docker build -t video-annotation .
+#   docker build -t tode-anotation .
 #
 # Run (headless / CI — no GUI):
-#   docker run --rm -it video-annotation python -c "from core import YOLOAnnotator"
+#   docker run --rm -it tode-anotation python -c "from core import YOLOAnnotator"
 #
 # Run (Linux desktop with X11 forwarding):
 #   xhost +local:docker
@@ -15,11 +16,11 @@
 #       -v /tmp/.X11-unix:/tmp/.X11-unix \
 #       -v $(pwd)/output:/app/output \
 #       -v $HOME/Documents/labeled_img:/root/Documents/labeled_img \
-#       video-annotation
+#       tode-anotation
 #
 # Run with GPU (NVIDIA, requires nvidia-container-toolkit on host):
 #   docker run --gpus all --rm -it -e DISPLAY=$DISPLAY \
-#       -v /tmp/.X11-unix:/tmp/.X11-unix video-annotation
+#       -v /tmp/.X11-unix:/tmp/.X11-unix tode-anotation
 
 FROM python:3.12-slim AS base
 
