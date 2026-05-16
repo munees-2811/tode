@@ -1,5 +1,6 @@
 """Orchestrates annotation lifecycle — with logging."""
 import os
+import threading
 import cv2
 from typing import Dict, Optional, List
 from models.annotation_model import FrameAnnotation, BoundingBox
@@ -28,16 +29,92 @@ class AnnotationManager:
         self.f_store   = frame_storage
         self.l_store   = label_storage
         self._annotations: Dict[int, FrameAnnotation] = {}
+        self._bg_thread: Optional[threading.Thread] = None
+        self._bg_progress = (0, 0)            # (done, total)
         log.info("AnnotationManager initialised")
 
-    def load_video(self):
-        log.info("Loading video frames into manager…")
+    def load_video(self, on_progress: Optional[callable] = None):
+        """
+        Build the frame index instantly so the UI is responsive immediately.
+        Frame PNG extraction runs in a daemon background thread; the cv2
+        fallback in ``_read_frame_reliable`` covers any frame the worker
+        hasn't reached yet (and writes it through opportunistically).
+        """
         self._annotations.clear()
-        for idx, frame, saved_path in self.extractor.extract():
+
+        loader = self.loader
+        step   = max(1, getattr(self.extractor, "step", 1))
+        total  = loader.total_frames
+
+        # Pre-populate the expected on-disk path for each entry. The file
+        # may not exist yet — _read_frame_reliable handles that — but
+        # label loading uses the path to derive the frame index.
+        for idx in range(0, total, step):
+            expected_path = self.extractor.frame_path(idx)
             self._annotations[idx] = FrameAnnotation(
-                frame_index=idx, frame_path=saved_path
+                frame_index=idx, frame_path=expected_path
             )
-        log.info(f"Loaded {len(self._annotations)} frames")
+        log.info(
+            f"Frame index built — {len(self._annotations)} entries; "
+            f"extracting in background"
+        )
+
+        # Image folders don't have a video bitstream to decode and the
+        # extractor's "extract" step is just a file copy — keep it
+        # synchronous because it's already fast.
+        if not isinstance(loader, VideoLoader):
+            for idx, _frame, saved in self.extractor.extract():
+                if (ann := self._annotations.get(idx)):
+                    ann.frame_path = saved
+            return
+
+        self._bg_progress = (0, len(self._annotations))
+        self._bg_thread = threading.Thread(
+            target=self._background_extract,
+            args=(on_progress,),
+            name="annotation-extract",
+            daemon=True,
+        )
+        self._bg_thread.start()
+
+    def _background_extract(self, on_progress: Optional[callable]):
+        """
+        Sequential extraction against a SECOND VideoCapture so the UI
+        thread's seeks don't disrupt our cursor (cv2's CAP_PROP_POS_FRAMES
+        is one-cursor-per-capture). The output dir is shared with the
+        primary extractor; both writers produce identical bytes for the
+        same frame index so an overwrite race is benign.
+        """
+        try:
+            bg_loader = VideoLoader(self.loader.video_path)
+            bg_loader.open()
+            bg_extractor = FrameExtractor(
+                bg_loader,
+                step        = max(1, getattr(self.extractor, "step", 1)),
+                save_frames = True,
+            )
+            bg_extractor.output_dir = self.extractor.output_dir
+            os.makedirs(bg_extractor.output_dir, exist_ok=True)
+
+            done = 0
+            total = self._bg_progress[1]
+            for idx, _frame, saved_path in bg_extractor.extract():
+                if (ann := self._annotations.get(idx)) and saved_path:
+                    ann.frame_path = saved_path
+                done += 1
+                self._bg_progress = (done, total)
+                if on_progress and (done % 20 == 0 or done == total):
+                    on_progress(done, total)
+            bg_loader.release()
+            log.info(f"Background extraction complete — {done}/{total} frames")
+            if on_progress:
+                on_progress(done, total)
+        except Exception as exc:
+            log.error(f"Background extraction failed: {exc}", exc_info=True)
+
+    @property
+    def bg_progress(self):
+        return self._bg_progress
 
     def get_annotation(self, frame_index: int) -> Optional[FrameAnnotation]:
         return self._annotations.get(frame_index)
@@ -76,8 +153,11 @@ class AnnotationManager:
         Prefer the saved frame on disk over re-seeking the source video.
         cv2.VideoCapture.set(CAP_PROP_POS_FRAMES, n) is unreliable for many
         codecs (H.264, B-frames, variable bitrate) and can return the wrong
-        frame or None. The on-disk PNG is the source of truth — it was
-        written during extraction and matches what the user sees.
+        frame or None. The on-disk PNG is the source of truth.
+
+        If the file doesn't exist yet (lazy / background-extracted videos),
+        read from the video and cache the result to disk so the next read
+        is reliable.
         """
         if ann.frame_path and os.path.exists(ann.frame_path):
             frame = cv2.imread(ann.frame_path)
@@ -87,7 +167,15 @@ class AnnotationManager:
                 f"Saved frame on disk unreadable, falling back to video: "
                 f"{ann.frame_path}"
             )
-        return self.loader.read_frame(frame_index)
+
+        frame = self.loader.read_frame(frame_index)
+        if frame is not None and ann.frame_path and not os.path.exists(ann.frame_path):
+            try:
+                os.makedirs(os.path.dirname(ann.frame_path), exist_ok=True)
+                cv2.imwrite(ann.frame_path, frame)
+            except OSError as exc:
+                log.debug(f"Could not cache frame {frame_index}: {exc}")
+        return frame
 
     def auto_annotate_all(self, progress_callback=None):
         indices = self.all_frame_indices()

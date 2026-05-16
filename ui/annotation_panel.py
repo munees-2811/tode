@@ -22,6 +22,7 @@ class AnnotationPanel(tk.Frame):
         on_delete_box:       Callable = None,   # callable(box_index)
         on_conf_change:      Callable = None,   # callable(float)
         on_model_change:     Callable = None,   # callable(model_name: str)
+        on_box_select:       Callable = None,   # callable(box_index_or_None)
     ):
         super().__init__(master, bg=BG_PANEL, width=280)
         self.pack_propagate(False)
@@ -33,6 +34,8 @@ class AnnotationPanel(tk.Frame):
         self._on_delete_box  = on_delete_box
         self._on_conf_change = on_conf_change
         self._on_model_change = on_model_change
+        self._on_box_select  = on_box_select
+        self._syncing_selection = False
 
         # Current class names from YOLO model
         self._class_names: Dict[int, str] = {}
@@ -235,6 +238,7 @@ class AnnotationPanel(tk.Frame):
             font=("Consolas", 8), relief=tk.FLAT, bd=0, height=8,
         )
         self.listbox.pack(fill=tk.BOTH, expand=True)
+        self.listbox.bind("<<ListboxSelect>>", self._on_listbox_select)
         scrollbar.config(command=self.listbox.yview)
 
         self.stats_var = tk.StringVar(value="0 boxes")
@@ -298,6 +302,25 @@ class AnnotationPanel(tk.Frame):
         sel = self.listbox.curselection()
         if sel and self._on_delete_box:
             self._on_delete_box(sel[0])
+
+    def _on_listbox_select(self, _event):
+        if self._syncing_selection:
+            return
+        sel = self.listbox.curselection()
+        idx = sel[0] if sel else None
+        if self._on_box_select:
+            self._on_box_select(idx)
+
+    def set_selected_box(self, idx):
+        """Sync listbox to match canvas selection (without re-firing callback)."""
+        self._syncing_selection = True
+        try:
+            self.listbox.selection_clear(0, tk.END)
+            if idx is not None and 0 <= idx < self.listbox.size():
+                self.listbox.selection_set(idx)
+                self.listbox.see(idx)
+        finally:
+            self._syncing_selection = False
 
     # ── public API ────────────────────────────────────────────────────────────
     def update_boxes(self, boxes: List[BoundingBox], class_names: Dict[int, str]):

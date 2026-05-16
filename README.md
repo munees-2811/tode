@@ -74,6 +74,41 @@ python main.py
 
 **Supported video formats:** MP4, AVI, MOV, MKV, WEBM, FLV, WMV
 
+### Instant video open
+
+Long videos open **instantly** — the frame index is built in memory before any decoding happens, so you can start annotating right away. Frame PNGs are extracted in a background thread; the status bar shows progress (`Extracting frames in background… 240/3000`). Any frame you navigate to before the worker reaches it is decoded on-demand and cached.
+
+---
+
+## Box editing
+
+After drawing or YOLO-detecting a box you can fix it without redrawing:
+
+1. **Select** — click anywhere inside a box. It highlights in orange with 8 resize handles (4 corners, 4 edges).
+2. **Resize** — drag any corner or edge handle.
+3. **Move** — drag the body of a selected box.
+4. **Deselect** — click an empty area, or switch to View mode.
+5. **From the list** — clicking a row in the **DETECTED BOXES** list also selects that box on the canvas. The selection stays in sync both ways.
+
+Live preview while dragging; release commits the change.
+
+---
+
+## Keyboard shortcuts (labelImg-style)
+
+| Key | Action |
+|---|---|
+| `A` / `←` | Previous frame |
+| `D` / `→` | Next frame |
+| `Home` / `End` | Jump to first / last frame |
+| `W` | Switch to **Draw Box** mode |
+| `V` / `Esc` | Switch back to **View** mode |
+| `Y` | Run YOLO on the current frame |
+| `Ctrl+S` | Save annotations |
+| `Ctrl+E` | Export dataset |
+| `Ctrl+O` | Open source dialog |
+| `Delete` | Clear all boxes on the current frame |
+
 ---
 
 ## Choosing a YOLO model
@@ -123,19 +158,25 @@ A dialog asks for:
 
 **Only annotated frames are exported.** Frames with no boxes are skipped entirely, so image and label files always match 1-to-1 (`img_000003.png` ↔ `img_000003.txt`).
 
+**Default location:** `~/Documents/labeled_img/<source_name>/` — easy to find. You can browse to any other folder in the dialog.
+
 ### YOLO export layout
 
 ```
-export_dir/
+~/Documents/labeled_img/<source_name>/
 ├── images/
-│   ├── img_000000.png
-│   └── img_000002.png         ← frame 1 skipped (no annotations)
-├── labels/
-│   ├── img_000000.txt
-│   └── img_000002.txt
+│   ├── img_1.png
+│   ├── img_2.png
+│   └── img_3.png              ← sequential 1-based naming
+├── labels/                    ← labels match images 1-to-1
+│   ├── img_1.txt
+│   ├── img_2.txt
+│   └── img_3.txt
 ├── classes.txt                ← one class name per line
 └── data.yaml                  ← Ultralytics dataset config
 ```
+
+Non-annotated frames are skipped entirely, then the remaining annotated frames are renumbered `1..N` in original order.
 
 `data.yaml` is ready for training:
 ```bash

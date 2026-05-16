@@ -71,6 +71,8 @@ class MainWindow(tk.Frame):
             on_frame_change=self._on_frame_change,
             on_box_drawn=self._on_box_drawn,
             on_open_request=self._open_source,
+            on_box_edited=self._on_box_edited,
+            on_box_selected=self._on_box_selected_in_canvas,
         )
         self.player.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                          padx=6, pady=6)
@@ -84,11 +86,13 @@ class MainWindow(tk.Frame):
             on_delete_box     = self._delete_box,
             on_conf_change    = self._on_conf_change,
             on_model_change   = self._on_model_change,
+            on_box_select     = self._on_box_selected_in_list,
         )
         self.ann_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
 
         self._build_status()
         self._build_progress()
+        self._bind_shortcuts()
 
     def _build_toolbar(self):
         bar = tk.Frame(self, bg=BG_PANEL, height=44)
@@ -150,6 +154,52 @@ class MainWindow(tk.Frame):
             style="App.Horizontal.TProgressbar",
         )
         self._progress_visible = False
+
+    # ── keyboard shortcuts (labelImg-style) ───────────────────────────────────
+    def _bind_shortcuts(self):
+        """
+        labelImg-style bindings. Bound at the root so they fire regardless
+        of which widget has focus.
+        """
+        root = self.master
+        mappings = {
+            # Navigation
+            "<Left>":         lambda _e: self._nav(-1),
+            "a":              lambda _e: self._nav(-1),
+            "A":              lambda _e: self._nav(-1),
+            "<Right>":        lambda _e: self._nav(+1),
+            "d":              lambda _e: self._nav(+1),
+            "D":              lambda _e: self._nav(+1),
+            "<Home>":         lambda _e: self._nav("first"),
+            "<End>":          lambda _e: self._nav("last"),
+            # Mode switching
+            "w":              lambda _e: self.player.set_draw_mode(),
+            "W":              lambda _e: self.player.set_draw_mode(),
+            "v":              lambda _e: self.player.set_view_mode(),
+            "V":              lambda _e: self.player.set_view_mode(),
+            "<Escape>":       lambda _e: self.player.set_view_mode(),
+            # Actions
+            "<Control-s>":    lambda _e: self._save(),
+            "<Control-S>":    lambda _e: self._save(),
+            "<Control-e>":    lambda _e: self._export_dataset(),
+            "<Control-E>":    lambda _e: self._export_dataset(),
+            "<Control-o>":    lambda _e: self._open_source(),
+            "<Control-O>":    lambda _e: self._open_source(),
+            "<Delete>":       lambda _e: self._clear_frame(),
+            # YOLO
+            "y":              lambda _e: self._run_yolo(),
+            "Y":              lambda _e: self._run_yolo(),
+        }
+        for key, fn in mappings.items():
+            root.bind(key, fn)
+        log.debug("Keyboard shortcuts bound (labelImg-style)")
+
+    def _nav(self, where):
+        """Move slider — accepts -1, +1, 'first', 'last'."""
+        if where == "first": self.player._go_first()
+        elif where == "last": self.player._go_last()
+        elif where == -1:    self.player._prev()
+        elif where == +1:    self.player._next()
 
     # ── progress ──────────────────────────────────────────────────────────────
     def _show_progress(self):
@@ -307,6 +357,13 @@ class MainWindow(tk.Frame):
     def _load_video(self, path: str):
         self._set_status(f"Opening video: {os.path.basename(path)}…")
 
+        def _on_bg_progress(done, total):
+            pct = (100 * done) // max(1, total)
+            self.after(0, lambda d=done, t=total, p=pct: self._set_status(
+                f"Extracting frames in background… {d}/{t} ({p}%)"
+                if d < t else f"All {t} frames extracted."
+            ))
+
         def _work():
             loader    = VideoLoader(path)
             loader.open()
@@ -319,8 +376,7 @@ class MainWindow(tk.Frame):
                 FrameStorage(vname),
                 LabelStorage(vname),
             )
-            self.after(0, lambda: self._set_status("Extracting frames…"))
-            mgr.load_video()
+            mgr.load_video(on_progress=_on_bg_progress)
             mgr.load_existing_labels()
             return mgr
 
@@ -331,9 +387,10 @@ class MainWindow(tk.Frame):
                 frame_path_provider=self._frame_path_for,
             )
             self._set_status(
-                f"Video loaded — '{os.path.basename(path)}'  "
+                f"Video ready — '{os.path.basename(path)}'  "
                 f"| {mgr.loader.total_frames} frames "
-                f"| {mgr.loader.fps:.0f} fps"
+                f"| {mgr.loader.fps:.0f} fps  "
+                f"(frames extract in background — start annotating now)"
             )
 
         def _err(exc):
@@ -465,6 +522,36 @@ class MainWindow(tk.Frame):
             f"Manual box added — '{cls_name}' on {src_label} {idx}. "
             f"Total: {len(ann.boxes)} box(es)."
         )
+
+    # ── box edit / select callbacks ───────────────────────────────────────────
+    def _on_box_edited(self, box_index: int,
+                       x1_n: float, y1_n: float,
+                       x2_n: float, y2_n: float):
+        if self.manager is None:
+            return
+        idx = self.player.current_frame_index
+        ann = self.manager.get_annotation(idx)
+        if not ann or box_index >= len(ann.boxes):
+            return
+        box = ann.boxes[box_index]
+        box.x_center = (x1_n + x2_n) / 2
+        box.y_center = (y1_n + y2_n) / 2
+        box.width    = x2_n - x1_n
+        box.height   = y2_n - y1_n
+        ann.is_annotated = bool(ann.boxes)
+        self.ann_panel.update_boxes(ann.boxes, self.manager.yolo.class_names)
+        self._set_status(
+            f"Edited box [{box_index}] — '{box.class_name}' "
+            f"({box.width:.2f}×{box.height:.2f})"
+        )
+
+    def _on_box_selected_in_canvas(self, box_index):
+        """Sync canvas → listbox highlight."""
+        self.ann_panel.set_selected_box(box_index)
+
+    def _on_box_selected_in_list(self, box_index):
+        """Sync listbox → canvas highlight."""
+        self.player.set_selected_box(box_index)
 
     # ── delete selected box ───────────────────────────────────────────────────
     def _delete_box(self, box_index: int):
@@ -600,7 +687,13 @@ class MainWindow(tk.Frame):
             )
             return
 
-        default_out = os.path.join(OUTPUT_DIR, "exports")
+        # Default to ~/Documents/labeled_img/<source_name>/ so exported
+        # datasets land somewhere users can find easily.
+        docs = os.path.join(os.path.expanduser("~"), "Documents")
+        if not os.path.isdir(docs):
+            docs = os.path.expanduser("~")
+        src_name = self.manager.f_store.video_name or "dataset"
+        default_out = os.path.join(docs, "labeled_img", src_name)
         dlg = ExportDialog(self.master, default_dir=default_out)
         if not dlg.result:
             return
