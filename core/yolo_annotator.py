@@ -1,107 +1,148 @@
-"""YOLO26x inference wrapper — thread-safe, with logging."""
+"""
+core/yolo_annotator.py
+───────────────────────
+Public-facing detector facade.  All other modules continue to use:
+
+    from core.yolo_annotator import YOLOAnnotator
+
+The internal backend is selected automatically from the file extension:
+    .pt   → UltralyticsDetector  (ultralytics, AGPL-3.0)
+    .onnx → ONNXDetector         (onnxruntime,  MIT — AGPL-free)
+
+Passing a bare model name ("yolo26x", "todev1") defaults to Ultralytics.
+The public interface is unchanged — annotation_manager and the UI are
+not aware of which backend is active.
+"""
 import os
 import threading
-from typing import List
-from ultralytics import YOLO
+from typing import Dict, List
+
+from core.base_detector import BaseDetector
 from models.annotation_model import BoundingBox
-from utils.config import YOLO_MODEL_PATH, YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD, YOLO_DEFAULT_MODEL
+from utils.config import YOLO_MODEL_PATH, YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD
 from utils.logger import get_logger
 
 log = get_logger("core.YOLOAnnotator")
 
 
+def _make_detector(model_path: str, confidence: float, iou: float) -> BaseDetector:
+    """Pick the right backend based on file extension."""
+    if model_path.endswith(".onnx"):
+        from core.detectors.onnx_detector import ONNXDetector
+        log.info(f"Backend selected: ONNX Runtime  ({model_path})")
+        d = ONNXDetector(confidence=confidence, iou=iou)
+    else:
+        from core.detectors.ultralytics_detector import UltralyticsDetector
+        log.info(f"Backend selected: Ultralytics  ({model_path})")
+        d = UltralyticsDetector(confidence=confidence, iou=iou)
+    return d
+
+
 class YOLOAnnotator:
+    """
+    Thread-safe detector facade.
+    Drop-in replacement for the previous direct-YOLO implementation —
+    every caller keeps using the same .load(), .reload(), .annotate_frame(),
+    .class_names, .confidence, and .iou interface.
+    """
+
     def __init__(
         self,
         model_path: str   = YOLO_MODEL_PATH,
         confidence: float = YOLO_CONFIDENCE,
         iou:        float = YOLO_IOU_THRESHOLD,
     ):
-        self.confidence = confidence
-        self.iou        = iou
-        self.model_path = model_path
-        self._model     = None
-        self._lock      = threading.Lock()
+        self._model_path = model_path
+        self._confidence = confidence
+        self._iou        = iou
+        self._detector: BaseDetector = _make_detector(model_path, confidence, iou)
+        self._lock = threading.Lock()
         log.debug(
             f"YOLOAnnotator created — conf={confidence}, iou={iou}, "
-            f"model_path={model_path}"
+            f"path={model_path}"
         )
 
+    # ── confidence / iou pass-through ─────────────────────────────────────────
+    @property
+    def confidence(self) -> float:
+        return self._confidence
+
+    @confidence.setter
+    def confidence(self, val: float):
+        self._confidence = val
+        self._detector.confidence = val
+
+    @property
+    def iou(self) -> float:
+        return self._iou
+
+    @iou.setter
+    def iou(self, val: float):
+        self._iou = val
+        self._detector.iou = val
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
     def load(self):
         with self._lock:
-            if self._model is not None:
+            if self._detector.is_loaded():
                 return
-            self._load_weights(self.model_path)
+            self._detector.load(self._model_path)
 
     def reload(self, model_name_or_path: str):
-        """Swap to a different model at runtime (name or full .pt path)."""
-        with self._lock:
-            self._model = None
-            self.model_path = model_name_or_path
-        self._load_weights(model_name_or_path)
+        """
+        Swap model at runtime.  If the extension changed (.pt ↔ .onnx) a
+        new backend is created transparently.
+        """
+        path = model_name_or_path
+        if not os.path.exists(path) and not path.endswith((".pt", ".onnx")):
+            path = path + ".pt"
 
-    def _load_weights(self, weights: str):
-        # Accept bare model name ("yolo26x") or full path
-        if not os.path.exists(weights):
-            # bare name → let ultralytics resolve / auto-download
-            if not weights.endswith(".pt"):
-                weights = weights + ".pt"
-        log.info(f"Loading YOLO weights: {weights}")
-        try:
-            self._model = YOLO(weights)
-            log.info(
-                f"YOLO model loaded — "
-                f"{len(self._model.names)} classes available"
-            )
-            log.debug(f"Classes: {self._model.names}")
-        except Exception as exc:
-            log.error(f"Failed to load YOLO model: {exc}", exc_info=True)
-            raise
+        with self._lock:
+            # Rebuild backend if extension changed
+            current_is_onnx = self._model_path.endswith(".onnx")
+            new_is_onnx     = path.endswith(".onnx")
+            if current_is_onnx != new_is_onnx:
+                self._detector = _make_detector(
+                    path, self._confidence, self._iou
+                )
+            else:
+                self._detector.confidence = self._confidence
+                self._detector.iou        = self._iou
+
+            self._model_path = path
+
+        self._detector.load(path)
+        log.info(
+            f"Model reloaded — path={path}  "
+            f"backend={self._detector.backend_name}"
+        )
 
     def is_loaded(self) -> bool:
-        return self._model is not None
+        return self._detector.is_loaded()
 
+    # ── inference ─────────────────────────────────────────────────────────────
     def annotate_frame(self, bgr_frame) -> List[BoundingBox]:
         self.load()
         log.debug(
-            f"Running inference — conf={self.confidence}, iou={self.iou}"
+            f"Running detection — conf={self._confidence}, iou={self._iou}, "
+            f"backend={self._detector.backend_name}"
         )
-        try:
-            results = self._model.predict(
-                source  = bgr_frame,
-                conf    = self.confidence,
-                iou     = self.iou,
-                verbose = False,
-            )
-        except Exception as exc:
-            log.error(f"YOLO inference error: {exc}", exc_info=True)
-            return []
-
-        boxes: List[BoundingBox] = []
-        for result in results:
-            img_h, img_w = bgr_frame.shape[:2]
-            for box in result.boxes:
-                cls_id   = int(box.cls[0])
-                cls_name = result.names[cls_id]
-                conf     = float(box.conf[0])
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                cx = ((x1 + x2) / 2) / img_w
-                cy = ((y1 + y2) / 2) / img_h
-                bw = (x2 - x1) / img_w
-                bh = (y2 - y1) / img_h
-                boxes.append(BoundingBox(
-                    class_id=cls_id, class_name=cls_name,
-                    x_center=cx, y_center=cy,
-                    width=bw, height=bh, confidence=conf,
-                ))
-                log.debug(
-                    f"  Detected: {cls_name} conf={conf:.2f} "
-                    f"bbox=({cx:.3f},{cy:.3f},{bw:.3f},{bh:.3f})"
-                )
-
-        log.info(f"Inference complete — {len(boxes)} object(s) detected")
+        boxes = self._detector.detect(bgr_frame)
+        log.info(
+            f"Detection complete — {len(boxes)} object(s)  "
+            f"[{self._detector.backend_name}]"
+        )
         return boxes
 
+    # ── metadata ──────────────────────────────────────────────────────────────
     @property
-    def class_names(self) -> dict:
-        return self._model.names if self._model else {}
+    def class_names(self) -> Dict[int, str]:
+        return self._detector.class_names
+
+    @property
+    def model_path(self) -> str:
+        return self._model_path
+
+    @property
+    def backend_name(self) -> str:
+        return self._detector.backend_name

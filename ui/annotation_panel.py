@@ -82,7 +82,7 @@ class AnnotationPanel(tk.Frame):
         auto_tab   = tk.Frame(nb, bg=BG_PANEL)
         manual_tab = tk.Frame(nb, bg=BG_PANEL)
 
-        nb.add(auto_tab,   text="⚡ Auto (YOLO)")
+        nb.add(auto_tab,   text="⚡ Auto (Detector)")
         nb.add(manual_tab, text="✏ Manual")
 
         self._build_auto_tab(auto_tab)
@@ -97,8 +97,8 @@ class AnnotationPanel(tk.Frame):
     def _build_auto_tab(self, parent):
         # ── Model selector ────────────────────────────────────────────────────
         tk.Label(
-            parent, text="YOLO Model",
-            bg=BG_PANEL, fg=TEXT_LIGHT, font=("Consolas", 9),
+            parent, text="Model  (.pt = Ultralytics · .onnx = AGPL-free)",
+            bg=BG_PANEL, fg=TEXT_LIGHT, font=("Consolas", 8),
         ).pack(pady=(10, 2), padx=10, anchor=tk.W)
 
         model_row = tk.Frame(parent, bg=BG_PANEL)
@@ -281,8 +281,13 @@ class AnnotationPanel(tk.Frame):
 
     def _browse_model(self):
         path = filedialog.askopenfilename(
-            title="Select YOLO .pt weights",
-            filetypes=[("PyTorch weights", "*.pt"), ("All files", "*.*")],
+            title="Select model weights",
+            filetypes=[
+                ("Model weights", "*.pt *.onnx"),
+                ("PyTorch (Ultralytics/AGPL)", "*.pt"),
+                ("ONNX (AGPL-free)", "*.onnx"),
+                ("All files", "*.*"),
+            ],
         )
         if path:
             self.model_var.set(path)

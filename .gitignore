@@ -10,8 +10,13 @@ env/
 
 # Generated runtime artifacts
 output/
-logs/*.log
-logs/*.log.*
+logs/
+
+# YOLO / PyTorch weight files — download on first run, never commit binaries
+weights/*.pt
+weights/*.pth
+weights/*.onnx
+weights/*.engine
 
 # IDE
 .idea/
