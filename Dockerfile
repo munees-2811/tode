@@ -35,7 +35,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #   libgl1, libglib2.0-0       — OpenCV runtime
 #   libxcb1, libxext6, libsm6  — Tk + cv2 imshow on X11
 #   tk, python3-tk             — Tkinter UI
-#   ffmpeg                     — yt-dlp merging (also satisfies bundled fallback)
 RUN apt-get update && apt-get install --no-install-recommends -y \
         libgl1 \
         libglib2.0-0 \
@@ -45,7 +44,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         libxrender1 \
         tk \
         python3-tk \
-        ffmpeg \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

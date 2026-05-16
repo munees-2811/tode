@@ -1,4 +1,4 @@
-"""Root application frame — supports video, image, image-folder & YouTube."""
+"""Root application frame — supports video, image, and image-folder sources."""
 import os
 import threading
 import tkinter as tk
@@ -28,7 +28,6 @@ _SOURCE_LABELS = {
     "video":        "🎬 Video",
     "image":        "🖼 Image",
     "image_folder": "📂 Image Folder",
-    "youtube":      "▶ YouTube",
 }
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
@@ -112,7 +111,6 @@ class MainWindow(tk.Frame):
         btn("📂  Open",       self._open_source)
         btn("🎬  Video",      self._open_video_direct)
         btn("🖼  Image",      self._open_image_direct)
-        btn("▶  YouTube",    self._open_youtube_direct, color="#cc3333")
         btn("💾  Save",       self._save,               color="#2d7a4e")
         btn("⚡  YOLO Frame", self._run_yolo)
         btn("🔁  YOLO All",   self._run_yolo_all,       color="#5a4fbf")
@@ -332,14 +330,6 @@ class MainWindow(tk.Frame):
         if result["path"]:
             self._load_from_result(result)
 
-    def _open_youtube_direct(self):
-        """Open the source dialog directly on the YouTube tab."""
-        if self._busy:
-            return
-        dlg = SourceDialog(self.master, initial_tab="youtube")
-        if dlg.result:
-            self._load_from_result(dlg.result)
-
     # ── unified loader dispatcher ─────────────────────────────────────────────
     def _load_from_result(self, result: dict):
         src_type = result["type"]
@@ -348,7 +338,7 @@ class MainWindow(tk.Frame):
         self._update_badge(src_type)
         log.info(f"Loading source — type={src_type}, path={path}")
 
-        if src_type in ("video", "youtube"):
+        if src_type == "video":
             self._load_video(path)
         elif src_type in ("image", "image_folder"):
             self._load_images(path)
