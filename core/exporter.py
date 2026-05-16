@@ -81,14 +81,20 @@ class DatasetExporter:
         ordered = sorted(class_id_map.items(), key=lambda kv: kv[1])
         ordered_names = [name for name, _ in ordered]
 
-        total = len(annotated)
-        for i, ann in enumerate(annotated, start=1):
+        # Sequential 1-based numbering so files line up:
+        #   images/img_1.png  ↔  labels/img_1.txt
+        #   images/img_2.png  ↔  labels/img_2.txt
+        # Sorted by original frame_index so order is deterministic.
+        ordered_anns = sorted(annotated, key=lambda a: a.frame_index)
+
+        total = len(ordered_anns)
+        for seq, ann in enumerate(ordered_anns, start=1):
             src = ann.frame_path
             if not os.path.exists(src):
                 log.warning(f"Frame missing on disk, skipping: {src}")
                 continue
-            stem = f"img_{ann.frame_index:06d}"
-            ext  = os.path.splitext(src)[1].lower() or ".png"
+            ext     = os.path.splitext(src)[1].lower() or ".png"
+            stem    = f"img_{seq}"
             dst_img = os.path.join(img_dir, stem + ext)
             shutil.copy2(src, dst_img)
 
@@ -102,7 +108,7 @@ class DatasetExporter:
                     )
 
             if progress_callback:
-                progress_callback(i, total)
+                progress_callback(seq, total)
 
         # classes.txt + data.yaml
         with open(os.path.join(self.output_dir, "classes.txt"), "w") as f:
@@ -151,9 +157,11 @@ class DatasetExporter:
         images_json: List[dict] = []
         anns_json:   List[dict] = []
         ann_id = 1
-        total  = len(annotated)
 
-        for i, ann in enumerate(annotated, start=1):
+        ordered_anns = sorted(annotated, key=lambda a: a.frame_index)
+        total  = len(ordered_anns)
+
+        for seq, ann in enumerate(ordered_anns, start=1):
             src = ann.frame_path
             if not os.path.exists(src):
                 log.warning(f"Frame missing on disk, skipping: {src}")
@@ -165,12 +173,11 @@ class DatasetExporter:
                 continue
             h, w = img.shape[:2]
 
-            stem    = f"img_{ann.frame_index:06d}"
             ext     = os.path.splitext(src)[1].lower() or ".png"
-            file_nm = stem + ext
+            file_nm = f"img_{seq}{ext}"
             shutil.copy2(src, os.path.join(img_dir, file_nm))
 
-            image_id = ann.frame_index + 1
+            image_id = seq
             images_json.append({
                 "id":        image_id,
                 "file_name": file_nm,
@@ -196,7 +203,7 @@ class DatasetExporter:
                 ann_id += 1
 
             if progress_callback:
-                progress_callback(i, total)
+                progress_callback(seq, total)
 
         coco = {
             "info": {

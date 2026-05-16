@@ -20,18 +20,23 @@ class VideoPlayer(tk.Frame):
 
     def __init__(self, master, on_frame_change: Callable = None,
                  on_box_drawn: Callable = None,
-                 on_open_request: Callable = None):
+                 on_open_request: Callable = None,
+                 on_box_edited: Callable = None,
+                 on_box_selected: Callable = None):
         """
         Parameters
         ----------
-        on_frame_change : callable(frame_index, bgr_frame)
-        on_box_drawn    : callable(x1_norm, y1_norm, x2_norm, y2_norm)
-                          called when user finishes drawing a box (normalised coords)
+        on_frame_change  : callable(frame_index, bgr_frame)
+        on_box_drawn     : callable(x1_norm, y1_norm, x2_norm, y2_norm)
+        on_box_edited    : callable(box_index, x1_norm, y1_norm, x2_norm, y2_norm)
+        on_box_selected  : callable(box_index_or_None)
         """
         super().__init__(master, bg=BG_DARK)
-        self._on_change      = on_frame_change
-        self._on_box_drawn   = on_box_drawn
+        self._on_change       = on_frame_change
+        self._on_box_drawn    = on_box_drawn
         self._on_open_request = on_open_request
+        self._on_box_edited   = on_box_edited
+        self._on_box_selected = on_box_selected
         self._frame_path_provider: Optional[Callable[[int], str]] = None
 
         self._loader      = None
@@ -45,6 +50,14 @@ class VideoPlayer(tk.Frame):
         self._mode        = self.MODE_VIEW
         self._draw_start: Optional[tuple] = None   # (canvas_x, canvas_y)
         self._draw_rect   = None                   # canvas rect id
+
+        # ── edit-mode state ───────────────────────────────────────────────────
+        # selected box index (into self._boxes), edit handle being dragged,
+        # and the original box pixel rect at drag-start (so we can update
+        # relative to the press point).
+        self._selected_idx: Optional[int] = None
+        self._edit_handle: Optional[str]  = None      # nw|n|ne|w|e|sw|s|se|move|None
+        self._edit_drag_start: Optional[tuple] = None # (mouse_x, mouse_y, px_box)
 
         # frame→canvas offset (for aspect-ratio letterboxing)
         self._frame_offset_x = 0
@@ -144,7 +157,17 @@ class VideoPlayer(tk.Frame):
 
     def set_overlay_boxes(self, boxes: List[BoundingBox]):
         self._boxes = list(boxes)
+        # If selection index is out of range, clear it.
+        if (self._selected_idx is not None
+                and self._selected_idx >= len(self._boxes)):
+            self._selected_idx = None
         self._redraw()
+
+    def set_selected_box(self, idx: Optional[int]):
+        """Public — used by AnnotationPanel to sync selection from list."""
+        if idx is not None and (idx < 0 or idx >= len(self._boxes)):
+            idx = None
+        self._select_box(idx)
 
     @property
     def current_frame_index(self) -> int:
@@ -175,48 +198,173 @@ class VideoPlayer(tk.Frame):
 
     # ── mouse handlers ────────────────────────────────────────────────────────
     def _on_mouse_press(self, event):
-        if self._mode != self.MODE_DRAW:
+        if self._mode == self.MODE_DRAW:
+            self._draw_start = (event.x, event.y)
+            if self._draw_rect:
+                self.canvas.delete(self._draw_rect)
+            self._draw_rect = self.canvas.create_rectangle(
+                event.x, event.y, event.x, event.y,
+                outline="#ff4444", width=2, dash=(4, 4),
+            )
             return
-        self._draw_start = (event.x, event.y)
-        if self._draw_rect:
-            self.canvas.delete(self._draw_rect)
-        self._draw_rect = self.canvas.create_rectangle(
-            event.x, event.y, event.x, event.y,
-            outline="#ff4444", width=2, dash=(4, 4),
-        )
+
+        # View mode → box editing
+        # If a box is already selected and we pressed near a handle, start
+        # resizing. Otherwise, see if the press hit any box → select it.
+        if self._selected_idx is not None:
+            handle = self._handle_at(event.x, event.y, self._selected_idx)
+            if handle is not None:
+                self._begin_edit(handle, event.x, event.y)
+                return
+
+        hit = self._box_at(event.x, event.y)
+        if hit is not None:
+            self._select_box(hit)
+            self._begin_edit("move", event.x, event.y)
+        else:
+            # Click on empty area → deselect
+            self._select_box(None)
 
     def _on_mouse_drag(self, event):
-        if self._mode != self.MODE_DRAW or self._draw_start is None:
+        if self._mode == self.MODE_DRAW and self._draw_start is not None:
+            x0, y0 = self._draw_start
+            self.canvas.coords(self._draw_rect, x0, y0, event.x, event.y)
             return
-        x0, y0 = self._draw_start
-        self.canvas.coords(self._draw_rect, x0, y0, event.x, event.y)
+
+        # Edit drag
+        if self._edit_handle is not None and self._selected_idx is not None:
+            self._apply_edit_drag(event.x, event.y, commit=False)
 
     def _on_mouse_release(self, event):
-        if self._mode != self.MODE_DRAW or self._draw_start is None:
+        if self._mode == self.MODE_DRAW and self._draw_start is not None:
+            x0, y0 = self._draw_start
+            x1, y1 = event.x, event.y
+            if self._draw_rect:
+                self.canvas.delete(self._draw_rect)
+                self._draw_rect = None
+            self._draw_start = None
+            if abs(x1 - x0) < 8 or abs(y1 - y0) < 8:
+                return
+            norm = self._canvas_to_norm(x0, y0, x1, y1)
+            if norm and self._on_box_drawn:
+                self._on_box_drawn(*norm)
             return
-        x0, y0 = self._draw_start
-        x1, y1 = event.x, event.y
 
-        # Clean up ghost rectangle
-        if self._draw_rect:
-            self.canvas.delete(self._draw_rect)
-            self._draw_rect = None
-        self._draw_start = None
-
-        # Ignore tiny accidental clicks
-        if abs(x1 - x0) < 8 or abs(y1 - y0) < 8:
-            return
-
-        # Convert canvas coords → normalised image coords
-        norm = self._canvas_to_norm(x0, y0, x1, y1)
-        if norm and self._on_box_drawn:
-            self._on_box_drawn(*norm)
+        # Edit release → commit final coords to caller
+        if self._edit_handle is not None and self._selected_idx is not None:
+            self._apply_edit_drag(event.x, event.y, commit=True)
+            self._edit_handle = None
+            self._edit_drag_start = None
 
     def _cancel_draw(self):
         if self._draw_rect:
             self.canvas.delete(self._draw_rect)
             self._draw_rect = None
         self._draw_start = None
+
+    # ── box editing helpers ───────────────────────────────────────────────────
+    HANDLE_SIZE = 6   # pixels — square half-side for resize hit-test
+
+    def _box_pixel_rect(self, box):
+        """Return (x1, y1, x2, y2) in canvas (not frame) coordinates."""
+        ox, oy = self._frame_offset_x, self._frame_offset_y
+        sc     = self._frame_scale
+        cx = box.x_center * self._frame_w
+        cy = box.y_center * self._frame_h
+        w  = box.width    * self._frame_w
+        h  = box.height   * self._frame_h
+        x1 = ox + (cx - w/2) * sc
+        y1 = oy + (cy - h/2) * sc
+        x2 = ox + (cx + w/2) * sc
+        y2 = oy + (cy + h/2) * sc
+        return x1, y1, x2, y2
+
+    def _box_at(self, cx, cy) -> Optional[int]:
+        """Return the index of the topmost box containing canvas point (cx,cy),
+        or None. Smallest-area first so a tiny box inside a big one wins."""
+        candidates = []
+        for i, b in enumerate(self._boxes):
+            x1, y1, x2, y2 = self._box_pixel_rect(b)
+            if x1 <= cx <= x2 and y1 <= cy <= y2:
+                candidates.append((i, (x2 - x1) * (y2 - y1)))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda t: t[1])
+        return candidates[0][0]
+
+    def _handle_at(self, cx, cy, box_idx) -> Optional[str]:
+        """Return the handle name (corner/edge/move) if (cx,cy) is on a
+        handle of self._boxes[box_idx], else None."""
+        if box_idx is None or box_idx >= len(self._boxes):
+            return None
+        x1, y1, x2, y2 = self._box_pixel_rect(self._boxes[box_idx])
+        s = self.HANDLE_SIZE
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        handles = {
+            "nw": (x1, y1), "n": (mx, y1), "ne": (x2, y1),
+            "w":  (x1, my),                "e":  (x2, my),
+            "sw": (x1, y2), "s": (mx, y2), "se": (x2, y2),
+        }
+        for name, (hx, hy) in handles.items():
+            if abs(cx - hx) <= s and abs(cy - hy) <= s:
+                return name
+        return None
+
+    def _begin_edit(self, handle, mx, my):
+        if self._selected_idx is None:
+            return
+        box = self._boxes[self._selected_idx]
+        self._edit_handle = handle
+        self._edit_drag_start = (mx, my, self._box_pixel_rect(box))
+
+    def _apply_edit_drag(self, mx, my, commit: bool):
+        if self._edit_drag_start is None or self._selected_idx is None:
+            return
+        sx, sy, (x1, y1, x2, y2) = self._edit_drag_start
+        dx, dy = mx - sx, my - sy
+        h = self._edit_handle
+
+        if h == "move":
+            x1 += dx; y1 += dy; x2 += dx; y2 += dy
+        else:
+            if "n" in h: y1 += dy
+            if "s" in h: y2 += dy
+            if "w" in h: x1 += dx
+            if "e" in h: x2 += dx
+
+        # Clamp to frame area
+        ox, oy = self._frame_offset_x, self._frame_offset_y
+        sc     = self._frame_scale
+        fx2    = ox + self._frame_w * sc
+        fy2    = oy + self._frame_h * sc
+        x1, x2 = sorted((max(ox, min(x1, fx2)), max(ox, min(x2, fx2))))
+        y1, y2 = sorted((max(oy, min(y1, fy2)), max(oy, min(y2, fy2))))
+
+        norm = self._canvas_to_norm(x1, y1, x2, y2)
+        if norm is None:
+            return
+        nx1, ny1, nx2, ny2 = norm
+        if nx2 - nx1 < 0.005 or ny2 - ny1 < 0.005:
+            return  # ignore degenerate
+
+        # Live-preview by updating local copy + redraw
+        box = self._boxes[self._selected_idx]
+        box.x_center = (nx1 + nx2) / 2
+        box.y_center = (ny1 + ny2) / 2
+        box.width    = nx2 - nx1
+        box.height   = ny2 - ny1
+        self._redraw()
+
+        if commit and self._on_box_edited:
+            self._on_box_edited(self._selected_idx, nx1, ny1, nx2, ny2)
+
+    def _select_box(self, idx: Optional[int]):
+        if idx == self._selected_idx:
+            return
+        self._selected_idx = idx
+        self._redraw()
+        if self._on_box_selected:
+            self._on_box_selected(idx)
 
     # ── coord conversion ──────────────────────────────────────────────────────
     def _canvas_to_norm(self, cx0, cy0, cx1, cy1):
@@ -367,3 +515,23 @@ class VideoPlayer(tk.Frame):
         self.canvas.delete("all")
         self.canvas.create_image(cw // 2, ch // 2,
                                  image=self._photo, anchor=tk.CENTER)
+
+        # Highlight selected box + draw resize handles on top
+        if (self._selected_idx is not None
+                and self._selected_idx < len(self._boxes)):
+            x1, y1, x2, y2 = self._box_pixel_rect(self._boxes[self._selected_idx])
+            self.canvas.create_rectangle(
+                x1, y1, x2, y2,
+                outline="#ffaa00", width=2, dash=(2, 2), tags="selection",
+            )
+            s = self.HANDLE_SIZE
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            for hx, hy in [
+                (x1, y1), (mx, y1), (x2, y1),
+                (x1, my),           (x2, my),
+                (x1, y2), (mx, y2), (x2, y2),
+            ]:
+                self.canvas.create_rectangle(
+                    hx - s, hy - s, hx + s, hy + s,
+                    fill="#ffaa00", outline="white", width=1, tags="handle",
+                )

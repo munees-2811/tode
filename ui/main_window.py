@@ -71,6 +71,8 @@ class MainWindow(tk.Frame):
             on_frame_change=self._on_frame_change,
             on_box_drawn=self._on_box_drawn,
             on_open_request=self._open_source,
+            on_box_edited=self._on_box_edited,
+            on_box_selected=self._on_box_selected_in_canvas,
         )
         self.player.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                          padx=6, pady=6)
@@ -84,6 +86,7 @@ class MainWindow(tk.Frame):
             on_delete_box     = self._delete_box,
             on_conf_change    = self._on_conf_change,
             on_model_change   = self._on_model_change,
+            on_box_select     = self._on_box_selected_in_list,
         )
         self.ann_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
 
@@ -520,6 +523,36 @@ class MainWindow(tk.Frame):
             f"Total: {len(ann.boxes)} box(es)."
         )
 
+    # ── box edit / select callbacks ───────────────────────────────────────────
+    def _on_box_edited(self, box_index: int,
+                       x1_n: float, y1_n: float,
+                       x2_n: float, y2_n: float):
+        if self.manager is None:
+            return
+        idx = self.player.current_frame_index
+        ann = self.manager.get_annotation(idx)
+        if not ann or box_index >= len(ann.boxes):
+            return
+        box = ann.boxes[box_index]
+        box.x_center = (x1_n + x2_n) / 2
+        box.y_center = (y1_n + y2_n) / 2
+        box.width    = x2_n - x1_n
+        box.height   = y2_n - y1_n
+        ann.is_annotated = bool(ann.boxes)
+        self.ann_panel.update_boxes(ann.boxes, self.manager.yolo.class_names)
+        self._set_status(
+            f"Edited box [{box_index}] — '{box.class_name}' "
+            f"({box.width:.2f}×{box.height:.2f})"
+        )
+
+    def _on_box_selected_in_canvas(self, box_index):
+        """Sync canvas → listbox highlight."""
+        self.ann_panel.set_selected_box(box_index)
+
+    def _on_box_selected_in_list(self, box_index):
+        """Sync listbox → canvas highlight."""
+        self.player.set_selected_box(box_index)
+
     # ── delete selected box ───────────────────────────────────────────────────
     def _delete_box(self, box_index: int):
         if not self._require_manager():
@@ -654,7 +687,13 @@ class MainWindow(tk.Frame):
             )
             return
 
-        default_out = os.path.join(OUTPUT_DIR, "exports")
+        # Default to ~/Documents/labeled_img/<source_name>/ so exported
+        # datasets land somewhere users can find easily.
+        docs = os.path.join(os.path.expanduser("~"), "Documents")
+        if not os.path.isdir(docs):
+            docs = os.path.expanduser("~")
+        src_name = self.manager.f_store.video_name or "dataset"
+        default_out = os.path.join(docs, "labeled_img", src_name)
         dlg = ExportDialog(self.master, default_dir=default_out)
         if not dlg.result:
             return
