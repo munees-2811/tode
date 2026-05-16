@@ -263,4 +263,69 @@ Video_Annotaion/
 
 ## License
 
-MIT
+This project is licensed under **GNU AGPL-3.0** — see [`LICENSE`](LICENSE).
+
+> **Why AGPL?** Ultralytics YOLO is itself licensed under AGPL-3.0, which is *viral copyleft*. Any project that links against `ultralytics` and is redistributed (including over a network) must be released under AGPL-3.0 too. If you need a permissive licence for closed-source / commercial use, you must either buy the [Ultralytics Enterprise Licence](https://www.ultralytics.com/license) or swap `ultralytics` for a permissively-licensed detector.
+
+See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency licence table.
+
+### What you can / cannot do
+
+| Action | Allowed? |
+|---|---|
+| Use the app locally, privately | ✅ Yes |
+| Modify the source code | ✅ Yes |
+| Share modifications with the community | ✅ Yes — must include AGPL-3.0 source |
+| Run as a public web service | ✅ Yes — must publish your modifications under AGPL-3.0 |
+| Sell a closed-source / SaaS fork without releasing source | ❌ No — needs Ultralytics Enterprise Licence |
+| Train models on **your own** data and use the weights | ✅ Yes — your weights, your data |
+| Redistribute YouTube downloads | ❌ No — YouTube ToS, not our licence |
+
+### YouTube content
+
+`yt-dlp` only downloads — it does not grant you any rights over the content. Only use the YouTube tab with videos you own, videos under permissive licences (CC, public domain), or your own uploads. The maintainers accept no responsibility for ToS violations by end-users.
+
+---
+
+## Running with Docker
+
+A `Dockerfile` and `docker-compose.yml` are provided for a reproducible Linux environment. Useful for headless inference, CI, or running the GUI on a server.
+
+```bash
+# Build the image (≈ 2 GB, mostly Torch + Ultralytics)
+docker build -t video-annotation .
+
+# Headless smoke test
+docker run --rm video-annotation python -c "from core import YOLOAnnotator; print('OK')"
+
+# Full GUI on Linux (X11 forwarding)
+xhost +local:docker
+docker compose up
+```
+
+Outputs persist on the host:
+- `./output/` — frame cache + working labels
+- `~/Documents/labeled_img/` — exported datasets
+
+**GPU support**: uncomment the `deploy.resources` block in `docker-compose.yml` and install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) on the host.
+
+> **macOS / Windows note:** Docker GUI forwarding doesn't work natively. Use Docker only for headless inference there, and run the GUI directly via `python main.py` in a venv.
+
+---
+
+## Packaging as a downloadable desktop app
+
+For end-users who don't have Python installed, build a single-file binary with **PyInstaller**:
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed \
+    --add-data "utils:utils" --add-data "models:models" \
+    --icon=icon.ico \
+    main.py
+# Output: dist/main(.exe) — copy alongside any required YOLO .pt weights
+```
+
+Each platform (Windows / macOS / Linux) needs its own build host. Sign and notarise on macOS, sign on Windows for SmartScreen.
+
+For an updateable release, push tagged versions to GitHub releases (`git tag v0.1.0 && git push --tags`); the README and `LICENSE` are bundled automatically.

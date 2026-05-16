@@ -1,0 +1,25 @@
+services:
+  app:
+    build: .
+    image: video-annotation:latest
+    container_name: video-annotation
+    # GUI on Linux — requires `xhost +local:docker` on the host first.
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - OPENCV_FFMPEG_CAPTURE_OPTIONS=threads;1
+    volumes:
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Local working files persisted on the host
+      - ./output:/app/output
+      - ${HOME}/Documents/labeled_img:/root/Documents/labeled_img
+    # Uncomment to use the host NVIDIA GPU (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    stdin_open: true
+    tty: true
