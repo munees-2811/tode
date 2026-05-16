@@ -35,8 +35,8 @@ A desktop application for annotating video frames and images with bounding boxes
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/tedo001/Video_Annotaion.git
-cd Video_Annotaion
+git clone https://github.com/tedo001/tode_anotation.v1.1.1.git
+cd tode_anotation.v1.1.1
 
 # 2. Create a virtual environment (Python 3.11 or 3.12)
 python3.12 -m venv .venv
@@ -228,7 +228,7 @@ All values normalised to `[0, 1]`. One line per bounding box.
 ## Project structure
 
 ```
-Video_Annotaion/
+tode_anotation.v1.1.1/
 ├── main.py                     # entry point
 ├── requirements.txt
 ├── core/
@@ -289,16 +289,23 @@ See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency
 
 ## Running with Docker
 
-A `Dockerfile` and `docker-compose.yml` are provided for a reproducible Linux environment. Useful for headless inference, CI, or running the GUI on a server.
+`Dockerfile` and `docker-compose.yml` give you a reproducible Linux environment with **all dependencies (Torch, Ultralytics, OpenCV, Tk, FFmpeg) pre-installed** — no `pip install`, no Python version issues. Use this if local install fails.
+
+### Build the image
 
 ```bash
-# Build the image (≈ 2 GB, mostly Torch + Ultralytics)
-docker build -t video-annotation .
+docker build -t tode-anotation .
+```
 
-# Headless smoke test
-docker run --rm video-annotation python -c "from core import YOLOAnnotator; print('OK')"
+First build takes ~5–15 min and produces a ~2 GB image (Torch + Ultralytics dominate).
 
-# Full GUI on Linux (X11 forwarding)
+### Run
+
+```bash
+# 1. Headless smoke test — confirms everything imports
+docker run --rm tode-anotation python -c "from core import YOLOAnnotator; print('OK')"
+
+# 2. Full GUI on Linux (X11 forwarding)
 xhost +local:docker
 docker compose up
 ```
@@ -307,9 +314,75 @@ Outputs persist on the host:
 - `./output/` — frame cache + working labels
 - `~/Documents/labeled_img/` — exported datasets
 
-**GPU support**: uncomment the `deploy.resources` block in `docker-compose.yml` and install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) on the host.
+### GPU (NVIDIA)
 
-> **macOS / Windows note:** Docker GUI forwarding doesn't work natively. Use Docker only for headless inference there, and run the GUI directly via `python main.py` in a venv.
+Install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) on the host, then uncomment the `deploy.resources` block in `docker-compose.yml`.
+
+```bash
+docker compose up                                  # uses the GPU automatically
+# or for direct docker run:
+docker run --gpus all --rm tode-anotation python main.py
+```
+
+### Platform notes
+
+| Platform | GUI in Docker? | Recommended use |
+|---|---|---|
+| Linux | ✅ Yes (X11 forwarding) | Full app or headless |
+| Windows | ❌ Awkward (needs WSL2 + VcXsrv) | Headless inference only |
+| macOS | ❌ No native X11 | Headless inference only |
+
+On Windows / macOS, just run `python main.py` in a venv for the GUI.
+
+---
+
+## Publishing to Docker Hub (manual)
+
+Lets community members run the app with one command instead of cloning + installing:
+
+```bash
+docker pull tedo001/tode-anotation:latest
+docker run --rm tedo001/tode-anotation python main.py
+```
+
+### One-time setup
+
+1. Create a Docker Hub account at <https://hub.docker.com>
+2. Generate an access token at <https://hub.docker.com/settings/security>
+   (Permissions: **Read & Write** — copy it, it's shown only once)
+3. On the host where you'll build, log in once:
+   ```bash
+   docker login -u tedo001
+   # paste the access token when prompted (NOT your password)
+   ```
+
+### Publish a new version
+
+```bash
+# Build with both a version tag and 'latest'
+docker build \
+    -t tedo001/tode-anotation:0.1.0 \
+    -t tedo001/tode-anotation:latest .
+
+# Push both tags
+docker push tedo001/tode-anotation:0.1.0
+docker push tedo001/tode-anotation:latest
+```
+
+Convention:
+- `:latest` — always the newest build (mutable)
+- `:0.1.0`, `:0.2.0` — immutable snapshots users can pin to
+
+### After the first push
+
+On <https://hub.docker.com/r/tedo001/tode-anotation> add:
+- **Description** — one-liner about the app
+- **Source repository link** — `https://github.com/tedo001/tode_anotation.v1.1.1`
+  (satisfies the AGPL source-disclosure obligation automatically)
+
+### Image storage cost
+
+Public images are free, unlimited. Anonymous pulls are rate-limited to 100/6h per IP; authenticated pulls (`docker login`) are unlimited.
 
 ---
 
