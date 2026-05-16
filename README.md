@@ -291,16 +291,6 @@ See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency
 
 A `Dockerfile` and `docker-compose.yml` are provided for a reproducible Linux environment. Useful for headless inference, CI, or running the GUI on a server.
 
-### Pull from Docker Hub (no build needed)
-
-```bash
-docker pull tedo001/video-annotation:latest
-```
-
-The image is auto-published from `master` and every `vX.Y.Z` git tag — see [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml).
-
-### Build it yourself
-
 ```bash
 # Build the image (≈ 2 GB, mostly Torch + Ultralytics)
 docker build -t video-annotation .

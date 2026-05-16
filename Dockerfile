@@ -23,15 +23,6 @@
 
 FROM python:3.12-slim AS base
 
-# OCI image metadata — required by Docker Hub and useful for AGPL
-# source-corresponding-to-binary obligation.
-LABEL org.opencontainers.image.title="Video Annotation Tool" \
-      org.opencontainers.image.description="Desktop tool for video / image annotation with YOLO auto-labelling and YOLO/COCO export" \
-      org.opencontainers.image.source="https://github.com/tedo001/video_annotaion" \
-      org.opencontainers.image.url="https://github.com/tedo001/video_annotaion" \
-      org.opencontainers.image.documentation="https://github.com/tedo001/video_annotaion/blob/master/README.md" \
-      org.opencontainers.image.licenses="AGPL-3.0-only"
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
