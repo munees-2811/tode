@@ -4,11 +4,11 @@ Right-hand panel with two tabs:
   MANUAL— class selector, box list, delete button
 """
 import tkinter as tk
-from tkinter import ttk, filedialog
-from typing import List, Callable, Dict, Optional
+from collections.abc import Callable
+from tkinter import filedialog, ttk
 
 from models.annotation_model import BoundingBox
-from utils.config import BG_PANEL, BG_DARK, ACCENT, TEXT_LIGHT, YOLO_MODELS, YOLO_DEFAULT_MODEL
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT, YOLO_DEFAULT_MODEL, YOLO_MODELS
 
 
 class AnnotationPanel(tk.Frame):
@@ -38,7 +38,7 @@ class AnnotationPanel(tk.Frame):
         self._syncing_selection = False
 
         # Current class names from YOLO model
-        self._class_names: Dict[int, str] = {}
+        self._class_names: dict[int, str] = {}
 
         # Manual annotation state
         self.selected_class_var = tk.StringVar(value="dog")
@@ -328,7 +328,7 @@ class AnnotationPanel(tk.Frame):
             self._syncing_selection = False
 
     # ── public API ────────────────────────────────────────────────────────────
-    def update_boxes(self, boxes: List[BoundingBox], class_names: Dict[int, str]):
+    def update_boxes(self, boxes: list[BoundingBox], class_names: dict[int, str]):
         self._class_names = class_names
 
         # Update combobox values from YOLO class names
@@ -360,7 +360,7 @@ class AnnotationPanel(tk.Frame):
     def get_model_name(self) -> str:
         return self.model_var.get()
 
-    def get_class_filter(self) -> List[str]:
+    def get_class_filter(self) -> list[str]:
         """Return list of class names to keep, or [] for all."""
         raw = self.filter_var.get().strip()
         if not raw:

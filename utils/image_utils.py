@@ -1,12 +1,13 @@
 """Utility functions for drawing and resizing."""
+
 import cv2
 import numpy as np
-from typing import List, Tuple
+
 from models.annotation_model import BoundingBox
 from utils.config import BOX_COLOR
 
 
-def draw_boxes(bgr_frame, boxes: List[BoundingBox], color=BOX_COLOR) -> np.ndarray:
+def draw_boxes(bgr_frame, boxes: list[BoundingBox], color=BOX_COLOR) -> np.ndarray:
     """Return a copy of bgr_frame with all bounding boxes drawn."""
     frame = bgr_frame.copy()
     h, w  = frame.shape[:2]
@@ -45,7 +46,7 @@ def bgr_to_photoimage(bgr_frame, width: int, height: int):
     return ImageTk.PhotoImage(Image.fromarray(rgb))
 
 
-def hex_to_bgr(hex_color: str) -> Tuple[int, int, int]:
+def hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
     hex_color = hex_color.lstrip("#")
     r, g, b = (int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     return b, g, r

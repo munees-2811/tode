@@ -6,13 +6,14 @@ Copies source images into the output frames folder.
 """
 import os
 import shutil
+from collections.abc import Generator
+
 import cv2
-from typing import Generator, Tuple, Optional
 import numpy as np
 
 from core.image_loader import ImageLoader
-from utils.config      import FRAMES_DIR
-from utils.logger      import get_logger
+from utils.config import FRAMES_DIR
+from utils.logger import get_logger
 
 log = get_logger("core.ImageFrameExtractor")
 
@@ -44,7 +45,7 @@ class ImageFrameExtractor:
         )
 
     # ── main iterator ─────────────────────────────────────────────────────────
-    def extract(self) -> Generator[Tuple[int, np.ndarray, str], None, None]:
+    def extract(self) -> Generator[tuple[int, np.ndarray, str], None, None]:
         total     = self.loader.total_frames
         extracted = 0
         log.info(f"Starting image extraction — {total} image(s)")
@@ -70,7 +71,7 @@ class ImageFrameExtractor:
         log.info(f"Image extraction complete — {extracted}/{total} succeeded")
 
     # ── single frame ──────────────────────────────────────────────────────────
-    def extract_single(self, idx: int) -> Tuple[Optional[np.ndarray], str]:
+    def extract_single(self, idx: int) -> tuple[np.ndarray | None, str]:
         frame = self.loader.read_frame(idx)
         if frame is None:
             return None, ""

@@ -23,7 +23,6 @@ Expected ONNX output format (YOLOv8 / YOLO11 / YOLO26 default export):
 """
 import json
 import os
-from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -79,7 +78,7 @@ class ONNXDetector(BaseDetector):
         self.iou         = iou
         self._session    = None
         self._model_path = ""
-        self._names: Dict[int, str] = {}
+        self._names: dict[int, str] = {}
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
     def load(self, model_path: str) -> None:
@@ -90,12 +89,12 @@ class ONNXDetector(BaseDetector):
     def _load_session(self, model_path: str) -> None:
         try:
             import onnxruntime as ort
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "onnxruntime is not installed.\n"
                 "Run: pip install onnxruntime\n"
                 "GPU:  pip install onnxruntime-gpu"
-            )
+            ) from exc
 
         if not os.path.isfile(model_path):
             raise FileNotFoundError(f"ONNX model not found: {model_path}")
@@ -122,7 +121,7 @@ class ONNXDetector(BaseDetector):
         return self._session is not None
 
     # ── inference ─────────────────────────────────────────────────────────────
-    def detect(self, bgr_frame) -> List[BoundingBox]:
+    def detect(self, bgr_frame) -> list[BoundingBox]:
         if not self.is_loaded():
             return []
 
@@ -144,7 +143,7 @@ class ONNXDetector(BaseDetector):
     @staticmethod
     def _preprocess(
         bgr_frame,
-    ) -> Tuple[np.ndarray, float, int, int]:
+    ) -> tuple[np.ndarray, float, int, int]:
         """
         Letterbox resize → RGB → NCHW float32 [0, 1].
         Returns (tensor, scale, pad_top, pad_left).
@@ -176,18 +175,17 @@ class ONNXDetector(BaseDetector):
         pad_left: int,
         img_w: int,
         img_h: int,
-    ) -> List[BoundingBox]:
+    ) -> list[BoundingBox]:
         """
         Decode YOLOv8-style ONNX output [1, 4+nc, 8400] and apply NMS.
         Converts surviving boxes to normalised BoundingBox format.
         """
         # [1, 4+nc, 8400] → [8400, 4+nc]
         preds = output.squeeze(0).T
-        nc    = preds.shape[1] - 4
 
-        raw_boxes:    List[List[float]] = []
-        confidences:  List[float]       = []
-        class_ids:    List[int]         = []
+        raw_boxes:    list[list[float]] = []
+        confidences:  list[float]       = []
+        class_ids:    list[int]         = []
 
         for pred in preds:
             cx, cy, bw, bh = pred[:4]
@@ -221,7 +219,7 @@ class ONNXDetector(BaseDetector):
             raw_boxes, confidences, self.confidence, self.iou
         )
 
-        boxes: List[BoundingBox] = []
+        boxes: list[BoundingBox] = []
         for i in indices:
             x, y, w, h = raw_boxes[i]
             cls_id     = class_ids[i]
@@ -240,7 +238,7 @@ class ONNXDetector(BaseDetector):
 
     # ── class names ───────────────────────────────────────────────────────────
     @staticmethod
-    def _load_class_names(model_path: str) -> Dict[int, str]:
+    def _load_class_names(model_path: str) -> dict[int, str]:
         """
         Look for a sidecar JSON next to the .onnx file:
             todev1.onnx  →  todev1_classes.json
@@ -265,7 +263,7 @@ class ONNXDetector(BaseDetector):
         return dict(_COCO_80)
 
     @property
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         return self._names
 
     @property

@@ -15,11 +15,12 @@ Features
 """
 
 import os
-import tkinter as tk
-from tkinter import ttk, filedialog
 import queue
-from utils.logger import gui_log_queue, get_log_file_path
-from utils.config import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT
+import tkinter as tk
+from tkinter import filedialog, ttk
+
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
+from utils.logger import get_log_file_path, gui_log_queue
 
 # ── Level → colour tag ────────────────────────────────────────────────────────
 _LEVEL_COLOURS = {
@@ -261,8 +262,8 @@ class LogViewer(tk.Toplevel):
 
     def _open_log_file(self):
         """Open today's log file in the default text editor."""
-        import subprocess
         import platform
+        import subprocess
         path = get_log_file_path()
         if not os.path.exists(path):
             return

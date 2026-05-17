@@ -6,12 +6,13 @@ Supports two modes:
 """
 import os
 import tkinter as tk
-from typing import List, Callable, Optional
+from collections.abc import Callable
 
 import cv2
+
 from models.annotation_model import BoundingBox
-from utils.image_utils import draw_boxes, bgr_to_photoimage, resize_frame
-from utils.config import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT, BOX_COLOR
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
+from utils.image_utils import bgr_to_photoimage
 
 
 class VideoPlayer(tk.Frame):
@@ -37,27 +38,27 @@ class VideoPlayer(tk.Frame):
         self._on_open_request = on_open_request
         self._on_box_edited   = on_box_edited
         self._on_box_selected = on_box_selected
-        self._frame_path_provider: Optional[Callable[[int], str]] = None
+        self._frame_path_provider: Callable[[int], str] | None = None
 
         self._loader      = None
-        self._indices: List[int] = []
+        self._indices: list[int] = []
         self._pos         = 0
-        self._boxes: List[BoundingBox] = []
+        self._boxes: list[BoundingBox] = []
         self._photo       = None
         self._current_frame = None
 
         # ── draw-mode state ───────────────────────────────────────────────────
         self._mode        = self.MODE_VIEW
-        self._draw_start: Optional[tuple] = None   # (canvas_x, canvas_y)
+        self._draw_start: tuple | None = None   # (canvas_x, canvas_y)
         self._draw_rect   = None                   # canvas rect id
 
         # ── edit-mode state ───────────────────────────────────────────────────
         # selected box index (into self._boxes), edit handle being dragged,
         # and the original box pixel rect at drag-start (so we can update
         # relative to the press point).
-        self._selected_idx: Optional[int] = None
-        self._edit_handle: Optional[str]  = None      # nw|n|ne|w|e|sw|s|se|move|None
-        self._edit_drag_start: Optional[tuple] = None # (mouse_x, mouse_y, px_box)
+        self._selected_idx: int | None = None
+        self._edit_handle: str | None  = None      # nw|n|ne|w|e|sw|s|se|move|None
+        self._edit_drag_start: tuple | None = None # (mouse_x, mouse_y, px_box)
 
         # frame→canvas offset (for aspect-ratio letterboxing)
         self._frame_offset_x = 0
@@ -144,8 +145,8 @@ class VideoPlayer(tk.Frame):
         self.idx_label.pack(pady=(0, 4))
 
     # ── public API ────────────────────────────────────────────────────────────
-    def load(self, loader, indices: List[int],
-             frame_path_provider: Optional[Callable[[int], str]] = None):
+    def load(self, loader, indices: list[int],
+             frame_path_provider: Callable[[int], str] | None = None):
         self._loader  = loader
         self._indices = indices
         self._pos     = 0
@@ -155,7 +156,7 @@ class VideoPlayer(tk.Frame):
             self.slider.config(to=len(indices) - 1)
             self._show_current()
 
-    def set_overlay_boxes(self, boxes: List[BoundingBox]):
+    def set_overlay_boxes(self, boxes: list[BoundingBox]):
         self._boxes = list(boxes)
         # If selection index is out of range, clear it.
         if (self._selected_idx is not None
@@ -163,7 +164,7 @@ class VideoPlayer(tk.Frame):
             self._selected_idx = None
         self._redraw()
 
-    def set_selected_box(self, idx: Optional[int]):
+    def set_selected_box(self, idx: int | None):
         """Public — used by AnnotationPanel to sync selection from list."""
         if idx is not None and (idx < 0 or idx >= len(self._boxes)):
             idx = None
@@ -279,7 +280,7 @@ class VideoPlayer(tk.Frame):
         y2 = oy + (cy + h/2) * sc
         return x1, y1, x2, y2
 
-    def _box_at(self, cx, cy) -> Optional[int]:
+    def _box_at(self, cx, cy) -> int | None:
         """Return the index of the topmost box containing canvas point (cx,cy),
         or None. Smallest-area first so a tiny box inside a big one wins."""
         candidates = []
@@ -292,7 +293,7 @@ class VideoPlayer(tk.Frame):
         candidates.sort(key=lambda t: t[1])
         return candidates[0][0]
 
-    def _handle_at(self, cx, cy, box_idx) -> Optional[str]:
+    def _handle_at(self, cx, cy, box_idx) -> str | None:
         """Return the handle name (corner/edge/move) if (cx,cy) is on a
         handle of self._boxes[box_idx], else None."""
         if box_idx is None or box_idx >= len(self._boxes):
@@ -325,12 +326,19 @@ class VideoPlayer(tk.Frame):
         h = self._edit_handle
 
         if h == "move":
-            x1 += dx; y1 += dy; x2 += dx; y2 += dy
+            x1 += dx
+            y1 += dy
+            x2 += dx
+            y2 += dy
         else:
-            if "n" in h: y1 += dy
-            if "s" in h: y2 += dy
-            if "w" in h: x1 += dx
-            if "e" in h: x2 += dx
+            if "n" in h:
+                y1 += dy
+            if "s" in h:
+                y2 += dy
+            if "w" in h:
+                x1 += dx
+            if "e" in h:
+                x2 += dx
 
         # Clamp to frame area
         ox, oy = self._frame_offset_x, self._frame_offset_y
@@ -358,7 +366,7 @@ class VideoPlayer(tk.Frame):
         if commit and self._on_box_edited:
             self._on_box_edited(self._selected_idx, nx1, ny1, nx2, ny2)
 
-    def _select_box(self, idx: Optional[int]):
+    def _select_box(self, idx: int | None):
         if idx == self._selected_idx:
             return
         self._selected_idx = idx
@@ -379,9 +387,6 @@ class VideoPlayer(tk.Frame):
         sc     = self._frame_scale
 
         # Clamp to frame area
-        fw = self._frame_w * sc
-        fh = self._frame_h * sc
-
         ix0 = max(0.0, min((cx0 - ox) / sc, self._frame_w))
         iy0 = max(0.0, min((cy0 - oy) / sc, self._frame_h))
         ix1 = max(0.0, min((cx1 - ox) / sc, self._frame_w))
@@ -510,7 +515,6 @@ class VideoPlayer(tk.Frame):
             from utils.image_utils import draw_boxes
             frame = draw_boxes(frame, self._boxes)
 
-        from utils.image_utils import bgr_to_photoimage
         self._photo = bgr_to_photoimage(frame, cw, ch)
         self.canvas.delete("all")
         self.canvas.create_image(cw // 2, ch // 2,

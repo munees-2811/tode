@@ -15,11 +15,10 @@ not aware of which backend is active.
 """
 import os
 import threading
-from typing import Dict, List
 
 from core.base_detector import BaseDetector
 from models.annotation_model import BoundingBox
-from utils.config import YOLO_MODEL_PATH, YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD
+from utils.config import YOLO_CONFIDENCE, YOLO_IOU_THRESHOLD, YOLO_MODEL_PATH
 from utils.logger import get_logger
 
 log = get_logger("core.YOLOAnnotator")
@@ -121,7 +120,7 @@ class YOLOAnnotator:
         return self._detector.is_loaded()
 
     # ── inference ─────────────────────────────────────────────────────────────
-    def annotate_frame(self, bgr_frame) -> List[BoundingBox]:
+    def annotate_frame(self, bgr_frame) -> list[BoundingBox]:
         self.load()
         log.debug(
             f"Running detection — conf={self._confidence}, iou={self._iou}, "
@@ -136,7 +135,7 @@ class YOLOAnnotator:
 
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         return self._detector.class_names
 
     @property

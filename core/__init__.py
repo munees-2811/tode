@@ -8,10 +8,10 @@ Public API (importable directly from `core`):
     from core import VideoLoader, FrameExtractor, YOLOAnnotator, AnnotationManager
 """
 
-from core.video_loader       import VideoLoader
-from core.frame_extractor    import FrameExtractor
-from core.yolo_annotator     import YOLOAnnotator
 from core.annotation_manager import AnnotationManager
+from core.frame_extractor import FrameExtractor
+from core.video_loader import VideoLoader
+from core.yolo_annotator import YOLOAnnotator
 
 __all__ = [
     "VideoLoader",
