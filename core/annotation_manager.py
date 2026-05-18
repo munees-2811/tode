@@ -1,6 +1,7 @@
 """Orchestrates annotation lifecycle — with logging."""
 import os
 import threading
+from collections.abc import Callable
 
 import cv2
 
@@ -34,7 +35,7 @@ class AnnotationManager:
         self._bg_progress = (0, 0)            # (done, total)
         log.info("AnnotationManager initialised")
 
-    def load_video(self, on_progress: callable | None = None):
+    def load_video(self, on_progress: Callable | None = None):
         """
         Build the frame index instantly so the UI is responsive immediately.
         Frame PNG extraction runs in a daemon background thread; the cv2
@@ -78,7 +79,7 @@ class AnnotationManager:
         )
         self._bg_thread.start()
 
-    def _background_extract(self, on_progress: callable | None):
+    def _background_extract(self, on_progress: Callable | None):
         """
         Sequential extraction against a SECOND VideoCapture so the UI
         thread's seeks don't disrupt our cursor (cv2's CAP_PROP_POS_FRAMES
