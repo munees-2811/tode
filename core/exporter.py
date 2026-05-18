@@ -6,13 +6,13 @@ Exports annotated frames + labels in either YOLO or COCO format.
 Only frames where ``is_annotated == True`` are exported.
 Non-annotated frames are skipped entirely.
 """
-import os
 import json
+import os
 import shutil
+from collections.abc import Callable
 from datetime import datetime
-from typing import Dict, List, Optional, Callable
 
-from models.annotation_model import FrameAnnotation, BoundingBox
+from models.annotation_model import FrameAnnotation
 from utils.logger import get_logger
 
 log = get_logger("core.DatasetExporter")
@@ -29,8 +29,8 @@ class DatasetExporter:
 
     def __init__(
         self,
-        annotations: Dict[int, FrameAnnotation],
-        class_names: Dict[int, str],
+        annotations: dict[int, FrameAnnotation],
+        class_names: dict[int, str],
         output_dir:  str,
     ):
         self.annotations = annotations
@@ -41,7 +41,7 @@ class DatasetExporter:
     def export(
         self,
         fmt: str = "yolo",
-        progress_callback: Optional[Callable] = None,
+        progress_callback: Callable | None = None,
     ) -> dict:
         """
         Returns a summary dict: {format, output_dir, images, labels, classes}.
@@ -69,8 +69,8 @@ class DatasetExporter:
     # ── YOLO ──────────────────────────────────────────────────────────────────
     def _export_yolo(
         self,
-        annotated: List[FrameAnnotation],
-        progress_callback: Optional[Callable],
+        annotated: list[FrameAnnotation],
+        progress_callback: Callable | None,
     ) -> dict:
         img_dir = os.path.join(self.output_dir, "images")
         lbl_dir = os.path.join(self.output_dir, "labels")
@@ -139,8 +139,8 @@ class DatasetExporter:
     # ── COCO ──────────────────────────────────────────────────────────────────
     def _export_coco(
         self,
-        annotated: List[FrameAnnotation],
-        progress_callback: Optional[Callable],
+        annotated: list[FrameAnnotation],
+        progress_callback: Callable | None,
     ) -> dict:
         import cv2  # local import — cv2 not needed for YOLO export
 
@@ -154,8 +154,8 @@ class DatasetExporter:
             for name, cid in ordered
         ]
 
-        images_json: List[dict] = []
-        anns_json:   List[dict] = []
+        images_json: list[dict] = []
+        anns_json:   list[dict] = []
         ann_id = 1
 
         ordered_anns = sorted(annotated, key=lambda a: a.frame_index)
@@ -234,15 +234,15 @@ class DatasetExporter:
         }
 
     # ── helpers ───────────────────────────────────────────────────────────────
-    def _build_class_id_map(self, annotated: List[FrameAnnotation]) -> Dict[str, int]:
+    def _build_class_id_map(self, annotated: list[FrameAnnotation]) -> dict[str, int]:
         """
         Build a stable name → 0-based id map.
         Preserves any ids already known from the YOLO model class_names,
         then appends user-typed manual classes.
         """
         # 1) Names from model — keep their numeric order if possible
-        seen: Dict[str, int] = {}
-        for cid, name in sorted(self.class_names.items(), key=lambda kv: kv[0]):
+        seen: dict[str, int] = {}
+        for _cid, name in sorted(self.class_names.items(), key=lambda kv: kv[0]):
             if name not in seen:
                 seen[name] = len(seen)
         # 2) Names from actual annotations — append any new ones

@@ -1,9 +1,11 @@
 """Extracts frames from a video at a configurable step."""
 import os
+from collections.abc import Generator
+
 import cv2
-from typing import Generator, Tuple
+
 from core.video_loader import VideoLoader
-from utils.config import FRAMES_DIR, DEFAULT_FPS_STEP
+from utils.config import DEFAULT_FPS_STEP, FRAMES_DIR
 from utils.logger import get_logger
 
 log = get_logger("core.FrameExtractor")
@@ -31,7 +33,7 @@ class FrameExtractor:
             f"save={self.save_frames}, dir={self.output_dir}"
         )
 
-    def extract(self) -> Generator[Tuple[int, object, str], None, None]:
+    def extract(self) -> Generator[tuple[int, object, str], None, None]:
         """
         Sequential extraction — does NOT seek per frame, which avoids the
         H.264 "mmco: unref short failure" silent-drop pattern caused by
@@ -68,7 +70,7 @@ class FrameExtractor:
         else:
             log.info(f"Extraction complete — {extracted} frames processed")
 
-    def extract_single(self, frame_index: int) -> Tuple[object, str]:
+    def extract_single(self, frame_index: int) -> tuple[object, str]:
         log.debug(f"Extracting single frame {frame_index}")
         frame = self.loader.read_frame(frame_index)
         if frame is None:

@@ -6,10 +6,9 @@ Non-annotated frames are skipped automatically.
 """
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog
-from typing import Optional
+from tkinter import filedialog, ttk
 
-from utils.config import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
 
 
 class ExportDialog(tk.Toplevel):
@@ -28,7 +27,7 @@ class ExportDialog(tk.Toplevel):
         self.grab_set()
         self.focus_set()
 
-        self.result: Optional[dict] = None
+        self.result: dict | None = None
 
         self.format_var = tk.StringVar(value="yolo")
         self.dir_var    = tk.StringVar(value=default_dir)

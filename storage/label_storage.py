@@ -1,9 +1,9 @@
 """Saves and loads annotations in YOLO .txt format (or JSON)."""
-import os
 import json
-from typing import List, Optional
-from models.annotation_model import FrameAnnotation, BoundingBox
-from utils.config import LABELS_DIR, LABEL_FORMAT
+import os
+
+from models.annotation_model import BoundingBox, FrameAnnotation
+from utils.config import LABEL_FORMAT, LABELS_DIR
 
 
 class LabelStorage:
@@ -68,7 +68,7 @@ class LabelStorage:
         return path
 
     # ── load ──────────────────────────────────────────────────────────────────
-    def load(self, frame_path: str) -> Optional[List[BoundingBox]]:
+    def load(self, frame_path: str) -> list[BoundingBox] | None:
         """Try to load labels for a frame identified by its image path."""
         frame_index = self._index_from_path(frame_path)
         if frame_index is None:
@@ -77,7 +77,7 @@ class LabelStorage:
             return self._load_json(frame_index)
         return self._load_yolo(frame_index)
 
-    def _load_yolo(self, frame_index: int) -> List[BoundingBox]:
+    def _load_yolo(self, frame_index: int) -> list[BoundingBox]:
         path = self._label_path(frame_index, ext=".txt")
         boxes = []
         if not os.path.exists(path):
@@ -99,7 +99,7 @@ class LabelStorage:
                     )
         return boxes
 
-    def _load_json(self, frame_index: int) -> List[BoundingBox]:
+    def _load_json(self, frame_index: int) -> list[BoundingBox]:
         path = self._label_path(frame_index, ext=".json")
         if not os.path.exists(path):
             return []
@@ -147,7 +147,7 @@ class LabelStorage:
         return os.path.join(self.base_dir, f"frame_{frame_index:06d}{ext}")
 
     @staticmethod
-    def _index_from_path(frame_path: str) -> Optional[int]:
+    def _index_from_path(frame_path: str) -> int | None:
         """Extract 000042 → 42 from 'frame_000042.png'."""
         base = os.path.splitext(os.path.basename(frame_path))[0]
         try:

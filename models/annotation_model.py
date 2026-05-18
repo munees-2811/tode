@@ -1,6 +1,5 @@
 """Pure-data model classes (no I/O)."""
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
@@ -38,8 +37,8 @@ class FrameAnnotation:
     """All annotations belonging to one video frame."""
     frame_index:  int
     frame_path:   str                         # absolute path to saved image
-    label_path:   Optional[str] = None        # absolute path to saved label file
-    boxes:        List[BoundingBox] = field(default_factory=list)
+    label_path:   str | None = None        # absolute path to saved label file
+    boxes:        list[BoundingBox] = field(default_factory=list)
     is_annotated: bool = False
 
     def add_box(self, box: BoundingBox):

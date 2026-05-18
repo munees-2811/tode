@@ -9,7 +9,6 @@ Breaking the interface free of ultralytics means:
   - future backends (OpenVINO, TFLite, CoreML) drop in without UI changes
 """
 from abc import ABC, abstractmethod
-from typing import Dict, List
 
 from models.annotation_model import BoundingBox
 
@@ -30,7 +29,7 @@ class BaseDetector(ABC):
 
     # ── inference ─────────────────────────────────────────────────────────────
     @abstractmethod
-    def detect(self, bgr_frame) -> List[BoundingBox]:
+    def detect(self, bgr_frame) -> list[BoundingBox]:
         """
         Run detection on a single BGR frame (numpy HWC uint8).
         Returns normalised BoundingBox list (x_center, y_center, w, h ∈ [0,1]).
@@ -39,7 +38,7 @@ class BaseDetector(ABC):
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
     @abstractmethod
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         """Return {class_id: class_name} dict."""
 
     # ── helpers ───────────────────────────────────────────────────────────────

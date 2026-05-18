@@ -1,15 +1,17 @@
 """Orchestrates annotation lifecycle — with logging."""
 import os
 import threading
+from collections.abc import Callable
+
 import cv2
-from typing import Dict, Optional, List
-from models.annotation_model import FrameAnnotation, BoundingBox
-from core.video_loader       import VideoLoader
-from core.frame_extractor    import FrameExtractor
-from core.yolo_annotator     import YOLOAnnotator
-from storage.frame_storage   import FrameStorage
-from storage.label_storage   import LabelStorage
-from utils.logger            import get_logger
+
+from core.frame_extractor import FrameExtractor
+from core.video_loader import VideoLoader
+from core.yolo_annotator import YOLOAnnotator
+from models.annotation_model import BoundingBox, FrameAnnotation
+from storage.frame_storage import FrameStorage
+from storage.label_storage import LabelStorage
+from utils.logger import get_logger
 
 log = get_logger("core.AnnotationManager")
 
@@ -28,12 +30,12 @@ class AnnotationManager:
         self.yolo      = yolo_annotator
         self.f_store   = frame_storage
         self.l_store   = label_storage
-        self._annotations: Dict[int, FrameAnnotation] = {}
-        self._bg_thread: Optional[threading.Thread] = None
+        self._annotations: dict[int, FrameAnnotation] = {}
+        self._bg_thread: threading.Thread | None = None
         self._bg_progress = (0, 0)            # (done, total)
         log.info("AnnotationManager initialised")
 
-    def load_video(self, on_progress: Optional[callable] = None):
+    def load_video(self, on_progress: Callable | None = None):
         """
         Build the frame index instantly so the UI is responsive immediately.
         Frame PNG extraction runs in a daemon background thread; the cv2
@@ -77,7 +79,7 @@ class AnnotationManager:
         )
         self._bg_thread.start()
 
-    def _background_extract(self, on_progress: Optional[callable]):
+    def _background_extract(self, on_progress: Callable | None):
         """
         Sequential extraction against a SECOND VideoCapture so the UI
         thread's seeks don't disrupt our cursor (cv2's CAP_PROP_POS_FRAMES
@@ -116,10 +118,10 @@ class AnnotationManager:
     def bg_progress(self):
         return self._bg_progress
 
-    def get_annotation(self, frame_index: int) -> Optional[FrameAnnotation]:
+    def get_annotation(self, frame_index: int) -> FrameAnnotation | None:
         return self._annotations.get(frame_index)
 
-    def all_frame_indices(self) -> List[int]:
+    def all_frame_indices(self) -> list[int]:
         return sorted(self._annotations.keys())
 
     def auto_annotate_frame(self, frame_index: int) -> FrameAnnotation:

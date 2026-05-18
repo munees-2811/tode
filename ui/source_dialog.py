@@ -5,10 +5,9 @@ Modal dialog — click a source card to browse and load a local file or folder.
 """
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from typing import Optional
+from tkinter import filedialog, messagebox, ttk
 
-from utils.config import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
 from utils.logger import get_logger
 
 log = get_logger("ui.SourceDialog")
@@ -30,7 +29,7 @@ class SourceDialog(tk.Toplevel):
         self.grab_set()
         self.focus_set()
 
-        self.result: Optional[dict] = None
+        self.result: dict | None = None
         self._selected_path = tk.StringVar(value="")
         self._selected_type = tk.StringVar(value="")
 

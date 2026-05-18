@@ -7,12 +7,15 @@ Run: python main.py
 # otherwise FFmpeg's async decoder may assert (libavcodec/pthread_frame.c:173)
 # when VideoCapture is touched from multiple threads.
 import os
+
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
 
 import cv2
+
 cv2.setNumThreads(0)
 
 import tkinter as tk
+
 from ui.main_window import MainWindow
 
 

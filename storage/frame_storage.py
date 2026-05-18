@@ -1,6 +1,8 @@
 """Handles saving / listing extracted frame images."""
 import os
+
 import cv2
+
 from utils.config import FRAMES_DIR
 
 

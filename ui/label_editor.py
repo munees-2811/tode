@@ -1,9 +1,9 @@
 """Simple dialog for manually editing or adding a bounding box label."""
 import tkinter as tk
-from tkinter import ttk, simpledialog
-from typing import Optional
+from tkinter import ttk
+
 from models.annotation_model import BoundingBox
-from utils.config import BG_PANEL, BG_DARK, ACCENT, TEXT_LIGHT
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
 
 
 class LabelEditorDialog(tk.Toplevel):
@@ -13,7 +13,7 @@ class LabelEditorDialog(tk.Toplevel):
     Opens with LabelEditorDialog.ask(...) which returns a BoundingBox or None.
     """
 
-    def __init__(self, master, class_names: dict, existing: Optional[BoundingBox] = None):
+    def __init__(self, master, class_names: dict, existing: BoundingBox | None = None):
         super().__init__(master)
         self.title("Edit Label")
         self.resizable(False, False)
@@ -22,7 +22,7 @@ class LabelEditorDialog(tk.Toplevel):
 
         self._class_names = class_names
         self._existing    = existing
-        self._result: Optional[BoundingBox] = None
+        self._result: BoundingBox | None = None
         self._build()
         self.wait_window()
 
@@ -81,6 +81,6 @@ class LabelEditorDialog(tk.Toplevel):
     # ── factory ───────────────────────────────────────────────────────────────
     @classmethod
     def ask(cls, master, class_names: dict,
-            existing: Optional[BoundingBox] = None) -> Optional[BoundingBox]:
+            existing: BoundingBox | None = None) -> BoundingBox | None:
         dialog = cls(master, class_names, existing)
         return dialog._result

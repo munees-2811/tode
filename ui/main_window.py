@@ -4,23 +4,23 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from core.video_loader          import VideoLoader
-from core.frame_extractor       import FrameExtractor
-from core.image_loader          import ImageLoader
+from core.annotation_manager import AnnotationManager
+from core.exporter import DatasetExporter
+from core.frame_extractor import FrameExtractor
 from core.image_frame_extractor import ImageFrameExtractor
-from core.yolo_annotator        import YOLOAnnotator
-from core.annotation_manager   import AnnotationManager
-from core.exporter             import DatasetExporter
-from models.annotation_model   import BoundingBox
-from storage.frame_storage      import FrameStorage
-from storage.label_storage      import LabelStorage
-from ui.video_player            import VideoPlayer
-from ui.annotation_panel        import AnnotationPanel
-from ui.log_viewer              import LogViewer
-from ui.source_dialog           import SourceDialog
-from ui.export_dialog           import ExportDialog
-from utils.logger               import get_logger
-from utils.config               import BG_DARK, BG_PANEL, ACCENT, TEXT_LIGHT, OUTPUT_DIR
+from core.image_loader import ImageLoader
+from core.video_loader import VideoLoader
+from core.yolo_annotator import YOLOAnnotator
+from models.annotation_model import BoundingBox
+from storage.frame_storage import FrameStorage
+from storage.label_storage import LabelStorage
+from ui.annotation_panel import AnnotationPanel
+from ui.export_dialog import ExportDialog
+from ui.log_viewer import LogViewer
+from ui.source_dialog import SourceDialog
+from ui.video_player import VideoPlayer
+from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
+from utils.logger import get_logger
 
 log = get_logger("ui.MainWindow")
 
@@ -194,10 +194,14 @@ class MainWindow(tk.Frame):
 
     def _nav(self, where):
         """Move slider — accepts -1, +1, 'first', 'last'."""
-        if where == "first": self.player._go_first()
-        elif where == "last": self.player._go_last()
-        elif where == -1:    self.player._prev()
-        elif where == +1:    self.player._next()
+        if where == "first":
+            self.player._go_first()
+        elif where == "last":
+            self.player._go_last()
+        elif where == -1:
+            self.player._prev()
+        elif where == +1:
+            self.player._next()
 
     # ── progress ──────────────────────────────────────────────────────────────
     def _show_progress(self):

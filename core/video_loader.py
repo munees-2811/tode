@@ -1,7 +1,8 @@
 """Responsible for opening a video file and exposing its metadata."""
 import threading
+
 import cv2
-from typing import Optional
+
 from utils.logger import get_logger
 
 log = get_logger("core.VideoLoader")
@@ -10,7 +11,7 @@ log = get_logger("core.VideoLoader")
 class VideoLoader:
     def __init__(self, video_path: str):
         self.video_path    = video_path
-        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap: cv2.VideoCapture | None = None
         self._lock         = threading.Lock()
         self.total_frames  = 0
         self.fps           = 0.0
@@ -25,7 +26,7 @@ class VideoLoader:
             self._cap = cv2.VideoCapture(self.video_path)
             if not self._cap.isOpened():
                 log.error(f"Failed to open video: {self.video_path}")
-                raise IOError(f"Cannot open video: {self.video_path}")
+                raise OSError(f"Cannot open video: {self.video_path}")
 
             self.total_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.fps          = self._cap.get(cv2.CAP_PROP_FPS) or 30.0

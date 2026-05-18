@@ -8,7 +8,6 @@ inherits that obligation.  For closed-source or SaaS deployments use
 ONNXDetector instead — it carries no AGPL surface.
 """
 import os
-from typing import Dict, List
 
 from core.base_detector import BaseDetector
 from models.annotation_model import BoundingBox
@@ -54,7 +53,7 @@ class UltralyticsDetector(BaseDetector):
         return self._model is not None
 
     # ── inference ─────────────────────────────────────────────────────────────
-    def detect(self, bgr_frame) -> List[BoundingBox]:
+    def detect(self, bgr_frame) -> list[BoundingBox]:
         if not self.is_loaded():
             return []
         try:
@@ -68,7 +67,7 @@ class UltralyticsDetector(BaseDetector):
             log.error(f"[Ultralytics] inference error: {exc}", exc_info=True)
             return []
 
-        boxes: List[BoundingBox] = []
+        boxes: list[BoundingBox] = []
         for result in results:
             img_h, img_w = bgr_frame.shape[:2]
             for box in result.boxes:
@@ -90,7 +89,7 @@ class UltralyticsDetector(BaseDetector):
 
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         return self._model.names if self._model else {}
 
     @property

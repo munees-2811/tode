@@ -6,9 +6,10 @@ Presents a unified interface matching VideoLoader so
 AnnotationManager can work with both without changes.
 """
 import os
+
 import cv2
 import numpy as np
-from typing import List, Optional
+
 from utils.logger import get_logger
 
 
@@ -45,7 +46,7 @@ class ImageLoader:
 
     def __init__(self, source_path: str):
         self.source_path  = source_path
-        self.image_paths: List[str] = []
+        self.image_paths: list[str] = []
         self.total_frames = 0
         self.fps          = 1.0
         self.width        = 0
@@ -64,7 +65,7 @@ class ImageLoader:
             log.info(f"Single image loaded: {self.source_path}")
 
         elif os.path.isdir(self.source_path):
-            found: List[str] = []
+            found: list[str] = []
             for root, dirs, files in os.walk(self.source_path):
                 dirs.sort()
                 for fname in sorted(files):
@@ -103,7 +104,7 @@ class ImageLoader:
         return bool(self.image_paths)
 
     # ── frame access ──────────────────────────────────────────────────────────
-    def read_frame(self, frame_index: int) -> Optional[np.ndarray]:
+    def read_frame(self, frame_index: int) -> np.ndarray | None:
         if not self.is_open():
             raise RuntimeError("ImageLoader is not open.")
         if not (0 <= frame_index < self.total_frames):
