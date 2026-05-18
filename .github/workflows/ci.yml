@@ -133,6 +133,8 @@ jobs:
   # ── 6. Secret scanning (gitleaks) ────────────────────────────────────────
   # Scans the full commit history for accidentally committed secrets:
   # API keys, tokens, passwords, private keys.
+  # Runs the gitleaks binary directly (pinned version) to avoid the
+  # commercial-license requirement of gitleaks-action@v2 on private repos.
   # fetch-depth: 0 is required so gitleaks can walk all commits, not just
   # the most recent one.
   gitleaks:
@@ -143,10 +145,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+
+      - name: Run gitleaks
+        run: gitleaks detect --source . -v --redact
 
   # ── 7. SBOM generation (syft) ────────────────────────────────────────────
   # Generates a Software Bill of Materials in SPDX-JSON format and uploads
