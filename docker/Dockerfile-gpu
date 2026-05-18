@@ -27,7 +27,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
-    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1"
+    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1" \
+    PYTHONPATH="/app/src"
 
 # OpenCV + Tk + X11 client libs (Tk for GUI; libgl1 for cv2.imshow).
 RUN apt-get update && apt-get install --no-install-recommends -y \

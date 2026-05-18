@@ -7,6 +7,10 @@ Run: python main.py
 # otherwise FFmpeg's async decoder may assert (libavcodec/pthread_frame.c:173)
 # when VideoCapture is touched from multiple threads.
 import os
+import sys
+
+# src/ layout: put the package root on the path so `from core...` works.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
 

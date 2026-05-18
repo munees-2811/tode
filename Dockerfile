@@ -29,7 +29,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
-    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1"
+    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1" \
+    PYTHONPATH="/app/src"
 
 # System dependencies:
 #   libgl1, libglib2.0-0       — OpenCV runtime

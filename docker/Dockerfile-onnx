@@ -27,7 +27,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
-    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1"
+    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1" \
+    PYTHONPATH="/app/src"
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
         libglib2.0-0 \
@@ -45,11 +46,11 @@ RUN pip install --upgrade pip \
         "requests>=2.28.0" \
         "onnxruntime>=1.17.0"
 
-COPY core ./core
-COPY models ./models
-COPY storage ./storage
-COPY utils ./utils
-COPY weights ./weights
+COPY src/core    ./src/core
+COPY src/models  ./src/models
+COPY src/storage ./src/storage
+COPY src/utils   ./src/utils
+COPY weights     ./weights
 
 VOLUME ["/app/output"]
 

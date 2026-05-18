@@ -17,8 +17,8 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"ui/*"   = ["E402"]   # imports not at top — tkinter style patterns
-"main.py"= ["E402"]   # cv2 env var must be set before import
+"src/ui/*" = ["E402"]   # imports not at top — tkinter style patterns
+"main.py"  = ["E402"]   # cv2 env var must be set before import
 
 [lint.isort]
 known-first-party = ["core", "models", "storage", "ui", "utils"]

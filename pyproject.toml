@@ -2,9 +2,10 @@
 # distributed as source / docker image, not as a wheel.
 
 [tool.pytest.ini_options]
-minversion = "7.0"
-testpaths  = ["tests"]
-addopts    = [
+minversion  = "7.0"
+testpaths   = ["tests"]
+pythonpath  = ["src"]
+addopts     = [
     "--strict-markers",
     "--tb=short",
     "--disable-warnings",

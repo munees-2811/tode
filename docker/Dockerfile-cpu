@@ -20,7 +20,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
-    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1"
+    OPENCV_FFMPEG_CAPTURE_OPTIONS="threads;1" \
+    PYTHONPATH="/app/src"
 
 # OpenCV-headless needs libglib2.0 only — no X11, no GL.
 RUN apt-get update && apt-get install --no-install-recommends -y \
