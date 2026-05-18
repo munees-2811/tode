@@ -8,7 +8,12 @@ import cv2
 from core.frame_extractor import FrameExtractor
 from core.video_loader import VideoLoader
 from core.yolo_annotator import YOLOAnnotator
-from models.annotation_model import BoundingBox, FrameAnnotation
+from models.annotation_model import (
+    BoundingBox,
+    FrameAnnotation,
+    ImageClassification,
+    PolygonAnnotation,
+)
 from storage.frame_storage import FrameStorage
 from storage.label_storage import LabelStorage
 from utils.logger import get_logger
@@ -232,12 +237,60 @@ class AnnotationManager:
     def load_existing_labels(self):
         loaded = 0
         for ann in self._annotations.values():
-            boxes = self.l_store.load(ann.frame_path)
+            boxes   = self.l_store.load(ann.frame_path)
+            polys   = self.l_store.load_polygons(ann.frame_path)
+            classes = self.l_store.load_classifications(ann.frame_path)
             if boxes:
-                ann.boxes        = boxes
-                ann.is_annotated = True
-                loaded          += 1
+                ann.boxes = boxes
+            if polys:
+                ann.polygons = polys
+            if classes:
+                ann.classifications = classes
+            if boxes or polys or classes:
+                ann._refresh_annotated()
+                loaded += 1
         log.info(f"Loaded existing labels for {loaded} frame(s)")
+
+    # ── polygon operations ────────────────────────────────────────────────────
+
+    def add_polygon(self, frame_index: int, poly: PolygonAnnotation) -> None:
+        ann = self._annotations.get(frame_index)
+        if ann:
+            ann.add_polygon(poly)
+            log.info(
+                f"Polygon added to frame {frame_index} — "
+                f"class='{poly.class_name}' pts={len(poly.points)}"
+            )
+
+    def remove_polygon(self, frame_index: int, poly_index: int) -> None:
+        ann = self._annotations.get(frame_index)
+        if ann:
+            ann.remove_polygon(poly_index)
+            log.info(f"Polygon [{poly_index}] removed from frame {frame_index}")
+
+    def clear_polygons(self, frame_index: int) -> None:
+        ann = self._annotations.get(frame_index)
+        if ann:
+            n = len(ann.polygons)
+            ann.clear_polygons()
+            log.info(f"Cleared {n} polygon(s) from frame {frame_index}")
+
+    # ── classification operations ─────────────────────────────────────────────
+
+    def set_classification(self, frame_index: int, cls: ImageClassification) -> None:
+        ann = self._annotations.get(frame_index)
+        if ann:
+            ann.set_classification(cls)
+            log.info(
+                f"Classification set on frame {frame_index} — "
+                f"class='{cls.class_name}'"
+            )
+
+    def clear_classifications(self, frame_index: int) -> None:
+        ann = self._annotations.get(frame_index)
+        if ann:
+            ann.clear_classifications()
+            log.info(f"Classifications cleared from frame {frame_index}")
 
     @property
     def annotated_count(self) -> int:
