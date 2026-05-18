@@ -1,0 +1,11 @@
+# Project metadata + test config. Build system stays disabled — tode is
+# distributed as source / docker image, not as a wheel.
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths  = ["tests"]
+addopts    = [
+    "--strict-markers",
+    "--tb=short",
+    "--disable-warnings",
+]
