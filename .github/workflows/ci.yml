@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    # Weekly re-run every Monday 07:00 UTC — catches dependency drift and
+    # new CVEs that arrive between code changes.
+    - cron: "0 7 * * 1"
 
 jobs:
 
@@ -76,11 +80,110 @@ jobs:
       - name: Run export_dataset example
         run: python examples/export_dataset.py /tmp/tode_export_demo
 
-  # ── 4. Docker build (master push only — image is ~600 MB-7 GB) ────────────
+  # ── 4. Static security analysis (bandit) ─────────────────────────────────
+  # Scans src/ for medium/high severity issues: shell injection, eval(),
+  # hardcoded secrets, unsafe deserialization, etc.
+  # Low-severity subprocess calls in ui/log_viewer.py are suppressed with
+  # # nosec annotations because the path argument is always an app-owned
+  # log file, never user-controlled input.
+  bandit:
+    name: Security (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install bandit
+        run: pip install "bandit[toml]"
+
+      - name: Run bandit
+        run: bandit -r src/ -c pyproject.toml
+
+  # ── 5. Dependency CVE audit (pip-audit) ──────────────────────────────────
+  # Checks all three requirements files against the OSV + PyPI Advisory DB.
+  # Fails if any installed package has a known CVE — fix by bumping the
+  # affected dep or adding an --ignore-vuln GHSA-xxx flag with justification.
+  pip-audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit main requirements
+        run: pip-audit -r requirements.txt
+
+      - name: Audit ONNX requirements
+        run: pip-audit -r requirements-onnx.txt
+
+      - name: Audit test requirements
+        run: pip-audit -r requirements-test.txt
+
+  # ── 6. Secret scanning (gitleaks) ────────────────────────────────────────
+  # Scans the full commit history for accidentally committed secrets:
+  # API keys, tokens, passwords, private keys.
+  # fetch-depth: 0 is required so gitleaks can walk all commits, not just
+  # the most recent one.
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  # ── 7. SBOM generation (syft) ────────────────────────────────────────────
+  # Generates a Software Bill of Materials in SPDX-JSON format and uploads
+  # it as a workflow artifact. The SBOM is a machine-readable inventory of
+  # every package bundled with tode — useful for security audits, license
+  # compliance checks, and vulnerability management tooling.
+  # Runs on master push only (not PRs) because it reflects the shipped code.
+  sbom:
+    name: SBOM (syft)
+    runs-on: ubuntu-latest
+    needs: [lint, tests, bandit, pip-audit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install runtime deps
+        run: pip install -r requirements.txt
+
+      - name: Generate SBOM (source + installed packages)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: tode-sbom.spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+  # ── 8. Docker build (master push only — image is ~600 MB-7 GB) ────────────
   docker:
     name: Docker build (${{ matrix.variant }})
     runs-on: ubuntu-latest
-    needs: [lint, tests]
+    needs: [lint, tests, bandit, pip-audit]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
