@@ -2,7 +2,12 @@
 import json
 import os
 
-from models.annotation_model import BoundingBox, FrameAnnotation
+from models.annotation_model import (
+    BoundingBox,
+    FrameAnnotation,
+    ImageClassification,
+    PolygonAnnotation,
+)
 from utils.config import LABEL_FORMAT, LABELS_DIR
 
 
@@ -30,10 +35,18 @@ class LabelStorage:
 
     # ── save ──────────────────────────────────────────────────────────────────
     def save(self, annotation: FrameAnnotation) -> str:
-        """Write annotation to disk. Returns path of written file."""
+        """Write all annotation types to disk. Returns bounding-box label path."""
         for box in annotation.boxes:
             self._class_map[int(box.class_id)] = box.class_name
+        for poly in annotation.polygons:
+            self._class_map[int(poly.class_id)] = poly.class_name
+        for cls in annotation.classifications:
+            self._class_map[int(cls.class_id)] = cls.class_name
         self._write_class_map()
+
+        self._save_polygons(annotation)
+        self._save_classifications(annotation)
+
         if self.fmt == "json":
             return self._save_json(annotation)
         return self._save_yolo(annotation)
@@ -67,15 +80,73 @@ class LabelStorage:
             json.dump(data, f, indent=2)
         return path
 
+    def _save_polygons(self, ann: FrameAnnotation) -> None:
+        if not ann.polygons:
+            return
+        path = self._label_path(ann.frame_index, ext=".seg.txt")
+        with open(path, "w", encoding="utf-8") as fh:
+            for poly in ann.polygons:
+                fh.write(poly.to_yolo_seg_line() + "\n")
+
+    def _save_classifications(self, ann: FrameAnnotation) -> None:
+        if not ann.classifications:
+            return
+        path = self._label_path(ann.frame_index, ext=".cls.txt")
+        with open(path, "w", encoding="utf-8") as fh:
+            for cls in ann.classifications:
+                fh.write(f"{cls.class_id} {cls.confidence:.4f}\n")
+
     # ── load ──────────────────────────────────────────────────────────────────
     def load(self, frame_path: str) -> list[BoundingBox] | None:
-        """Try to load labels for a frame identified by its image path."""
+        """Try to load bounding-box labels for a frame (backward-compatible)."""
         frame_index = self._index_from_path(frame_path)
         if frame_index is None:
             return None
         if self.fmt == "json":
             return self._load_json(frame_index)
         return self._load_yolo(frame_index)
+
+    def load_polygons(self, frame_path: str) -> list[PolygonAnnotation]:
+        """Load polygon/segmentation annotations for a frame."""
+        frame_index = self._index_from_path(frame_path)
+        if frame_index is None:
+            return []
+        path = self._label_path(frame_index, ext=".seg.txt")
+        polys: list[PolygonAnnotation] = []
+        if not os.path.exists(path):
+            return polys
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    polys.append(PolygonAnnotation.from_yolo_seg_line(line, self._class_map))
+                except (ValueError, IndexError):
+                    pass
+        return polys
+
+    def load_classifications(self, frame_path: str) -> list[ImageClassification]:
+        """Load image-level classification labels for a frame."""
+        frame_index = self._index_from_path(frame_path)
+        if frame_index is None:
+            return []
+        path = self._label_path(frame_index, ext=".cls.txt")
+        clss: list[ImageClassification] = []
+        if not os.path.exists(path):
+            return clss
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.strip().split()
+                if len(parts) >= 1:
+                    cid  = int(parts[0])
+                    conf = float(parts[1]) if len(parts) >= 2 else 1.0
+                    clss.append(ImageClassification(
+                        class_id=cid,
+                        class_name=self._class_map.get(cid, str(cid)),
+                        confidence=conf,
+                    ))
+        return clss
 
     def _load_yolo(self, frame_index: int) -> list[BoundingBox]:
         path = self._label_path(frame_index, ext=".txt")

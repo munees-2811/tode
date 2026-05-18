@@ -10,20 +10,22 @@ from collections.abc import Callable
 
 import cv2
 
-from models.annotation_model import BoundingBox
+from models.annotation_model import BoundingBox, PolygonAnnotation
 from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
 from utils.image_utils import bgr_to_photoimage
 
 
 class VideoPlayer(tk.Frame):
-    MODE_VIEW = "view"
-    MODE_DRAW = "draw"
+    MODE_VIEW    = "view"
+    MODE_DRAW    = "draw"
+    MODE_POLYGON = "polygon"
 
     def __init__(self, master, on_frame_change: Callable = None,
                  on_box_drawn: Callable = None,
                  on_open_request: Callable = None,
                  on_box_edited: Callable = None,
-                 on_box_selected: Callable = None):
+                 on_box_selected: Callable = None,
+                 on_polygon_drawn: Callable = None):
         """
         Parameters
         ----------
@@ -33,11 +35,12 @@ class VideoPlayer(tk.Frame):
         on_box_selected  : callable(box_index_or_None)
         """
         super().__init__(master, bg=BG_DARK)
-        self._on_change       = on_frame_change
-        self._on_box_drawn    = on_box_drawn
-        self._on_open_request = on_open_request
-        self._on_box_edited   = on_box_edited
-        self._on_box_selected = on_box_selected
+        self._on_change         = on_frame_change
+        self._on_box_drawn      = on_box_drawn
+        self._on_open_request   = on_open_request
+        self._on_box_edited     = on_box_edited
+        self._on_box_selected   = on_box_selected
+        self._on_polygon_drawn  = on_polygon_drawn
         self._frame_path_provider: Callable[[int], str] | None = None
 
         self._loader      = None
@@ -53,12 +56,14 @@ class VideoPlayer(tk.Frame):
         self._draw_rect   = None                   # canvas rect id
 
         # ── edit-mode state ───────────────────────────────────────────────────
-        # selected box index (into self._boxes), edit handle being dragged,
-        # and the original box pixel rect at drag-start (so we can update
-        # relative to the press point).
         self._selected_idx: int | None = None
-        self._edit_handle: str | None  = None      # nw|n|ne|w|e|sw|s|se|move|None
-        self._edit_drag_start: tuple | None = None # (mouse_x, mouse_y, px_box)
+        self._edit_handle: str | None  = None
+        self._edit_drag_start: tuple | None = None
+
+        # ── polygon-draw state ────────────────────────────────────────────────
+        self._poly_points: list[tuple[float, float]] = []  # normalised pts
+        self._poly_items: list[int] = []                    # canvas item IDs
+        self._polygons: list[PolygonAnnotation] = []        # committed polys
 
         # frame→canvas offset (for aspect-ratio letterboxing)
         self._frame_offset_x = 0
@@ -95,6 +100,13 @@ class VideoPlayer(tk.Frame):
         )
         self._draw_btn.pack(side=tk.LEFT, padx=2, pady=4)
 
+        self._poly_btn = tk.Button(
+            mode_bar, text="⬠ Polygon", command=self.set_polygon_mode,
+            bg=BG_DARK, fg=TEXT_LIGHT, relief=tk.FLAT,
+            padx=10, font=("Consolas", 9, "bold"), cursor="hand2",
+        )
+        self._poly_btn.pack(side=tk.LEFT, padx=2, pady=4)
+
         self._mode_label = tk.Label(
             mode_bar, text="  VIEW MODE — navigate freely",
             bg=BG_PANEL, fg="#aaaacc", font=("Consolas", 8, "italic"),
@@ -110,6 +122,8 @@ class VideoPlayer(tk.Frame):
         self.canvas.bind("<ButtonPress-1>",   self._on_mouse_press)
         self.canvas.bind("<B1-Motion>",       self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_release)
+        self.canvas.bind("<Double-Button-1>", self._on_double_click)
+        self.canvas.bind("<Escape>",          lambda _: self._cancel_polygon())
 
         self._draw_empty_hint()
 
@@ -158,10 +172,14 @@ class VideoPlayer(tk.Frame):
 
     def set_overlay_boxes(self, boxes: list[BoundingBox]):
         self._boxes = list(boxes)
-        # If selection index is out of range, clear it.
         if (self._selected_idx is not None
                 and self._selected_idx >= len(self._boxes)):
             self._selected_idx = None
+        self._redraw()
+
+    def set_overlay_polygons(self, polygons: list[PolygonAnnotation]):
+        """Display committed polygon overlays on the canvas."""
+        self._polygons = list(polygons)
         self._redraw()
 
     def set_selected_box(self, idx: int | None):
@@ -182,20 +200,36 @@ class VideoPlayer(tk.Frame):
         self.canvas.config(cursor="arrow")
         self._view_btn.config(bg=ACCENT,   fg="white")
         self._draw_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._poly_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
         self._mode_label.config(text="  VIEW MODE — navigate freely")
         self._cancel_draw()
+        self._cancel_polygon()
 
     def set_draw_mode(self):
         self._mode = self.MODE_DRAW
         self.canvas.config(cursor="crosshair")
         self._draw_btn.config(bg="#e05c5c", fg="white")
         self._view_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._poly_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._mode_label.config(text="  DRAW MODE — click & drag to annotate")
+        self._cancel_polygon()
+
+    def set_polygon_mode(self):
+        self._mode = self.MODE_POLYGON
+        self.canvas.config(cursor="crosshair")
+        self._poly_btn.config(bg="#2a9d5c", fg="white")
+        self._view_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._draw_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
         self._mode_label.config(
-            text="  DRAW MODE — click & drag to annotate"
+            text="  POLYGON MODE — click to add pts · double-click to close"
         )
+        self._cancel_draw()
 
     def is_draw_mode(self) -> bool:
         return self._mode == self.MODE_DRAW
+
+    def is_polygon_mode(self) -> bool:
+        return self._mode == self.MODE_POLYGON
 
     # ── mouse handlers ────────────────────────────────────────────────────────
     def _on_mouse_press(self, event):
@@ -207,6 +241,16 @@ class VideoPlayer(tk.Frame):
                 event.x, event.y, event.x, event.y,
                 outline="#ff4444", width=2, dash=(4, 4),
             )
+            return
+
+        if self._mode == self.MODE_POLYGON:
+            # Double-click closes the polygon
+            if event.num == 1 and getattr(event, "type", None) is not None:
+                pass  # handled via ButtonPress; double fires both
+            norm = self._canvas_pt_to_norm(event.x, event.y)
+            if norm:
+                self._poly_points.append(norm)
+                self._draw_poly_preview()
             return
 
         # View mode → box editing
@@ -236,6 +280,10 @@ class VideoPlayer(tk.Frame):
         if self._edit_handle is not None and self._selected_idx is not None:
             self._apply_edit_drag(event.x, event.y, commit=False)
 
+    def _on_double_click(self, event):
+        if self._mode == self.MODE_POLYGON:
+            self._close_polygon()
+
     def _on_mouse_release(self, event):
         if self._mode == self.MODE_DRAW and self._draw_start is not None:
             x0, y0 = self._draw_start
@@ -262,6 +310,62 @@ class VideoPlayer(tk.Frame):
             self.canvas.delete(self._draw_rect)
             self._draw_rect = None
         self._draw_start = None
+
+    def _cancel_polygon(self):
+        for item in self._poly_items:
+            self.canvas.delete(item)
+        self._poly_items.clear()
+        self._poly_points.clear()
+
+    def _draw_poly_preview(self):
+        for item in self._poly_items:
+            self.canvas.delete(item)
+        self._poly_items.clear()
+        pts = self._poly_points
+        if not pts:
+            return
+        # Convert normalised pts → canvas coords
+        cv = [self._norm_to_canvas(x, y) for x, y in pts]
+        for cx, cy in cv:
+            dot = self.canvas.create_oval(cx - 4, cy - 4, cx + 4, cy + 4,
+                                          fill="#00ff88", outline="white", width=1)
+            self._poly_items.append(dot)
+        if len(cv) >= 2:
+            flat = [c for pt in cv for c in pt]
+            line = self.canvas.create_line(*flat, fill="#00ff88", width=2)
+            self._poly_items.append(line)
+        # Close-line hint
+        if len(cv) >= 3:
+            close = self.canvas.create_line(
+                cv[-1][0], cv[-1][1], cv[0][0], cv[0][1],
+                fill="#00ff88", width=1, dash=(4, 4),
+            )
+            self._poly_items.append(close)
+
+    def _close_polygon(self):
+        """Finalise the in-progress polygon and fire the callback."""
+        if len(self._poly_points) < 3:
+            return
+        pts  = list(self._poly_points)
+        self._cancel_polygon()
+        if self._on_polygon_drawn:
+            self._on_polygon_drawn(pts)
+        self._redraw()
+
+    def _canvas_pt_to_norm(self, cx: float, cy: float):
+        """Convert a single canvas point to normalised (x, y) in [0,1]."""
+        if self._frame_scale == 0:
+            return None
+        ox, oy = self._frame_offset_x, self._frame_offset_y
+        sc     = self._frame_scale
+        x = max(0.0, min((cx - ox) / sc / self._frame_w, 1.0))
+        y = max(0.0, min((cy - oy) / sc / self._frame_h, 1.0))
+        return x, y
+
+    def _norm_to_canvas(self, nx: float, ny: float) -> tuple[float, float]:
+        ox, oy = self._frame_offset_x, self._frame_offset_y
+        sc     = self._frame_scale
+        return ox + nx * self._frame_w * sc, oy + ny * self._frame_h * sc
 
     # ── box editing helpers ───────────────────────────────────────────────────
     HANDLE_SIZE = 6   # pixels — square half-side for resize hit-test
@@ -539,3 +643,31 @@ class VideoPlayer(tk.Frame):
                     hx - s, hy - s, hx + s, hy + s,
                     fill="#ffaa00", outline="white", width=1, tags="handle",
                 )
+
+        # Draw committed polygon overlays
+        _POLY_COLORS = [
+            "#00ff88", "#ff6644", "#44aaff", "#ffcc00",
+            "#cc44ff", "#ff44aa", "#44ffcc",
+        ]
+        for pi, poly in enumerate(self._polygons):
+            color = _POLY_COLORS[pi % len(_POLY_COLORS)]
+            cv_pts = [self._norm_to_canvas(x, y) for x, y in poly.points]
+            if len(cv_pts) >= 2:
+                flat = [c for pt in cv_pts for c in pt]
+                self.canvas.create_polygon(
+                    *flat,
+                    outline=color, fill=color, stipple="gray25",
+                    width=2, tags="polygon",
+                )
+            # Label at centroid
+            if cv_pts:
+                cx_c = sum(p[0] for p in cv_pts) / len(cv_pts)
+                cy_c = sum(p[1] for p in cv_pts) / len(cv_pts)
+                self.canvas.create_text(
+                    cx_c, cy_c, text=poly.class_name,
+                    fill="white", font=("Helvetica", 8, "bold"),
+                    tags="polygon",
+                )
+
+        # Polygon preview (in-progress)
+        self._draw_poly_preview()
