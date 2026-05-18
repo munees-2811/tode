@@ -30,3 +30,6 @@ weights/*.engine
 # OS
 .DS_Store
 Thumbs.db
+
+# Local debug binaries (downloaded for reproducing CI failures)
+gitleaks

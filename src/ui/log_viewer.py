@@ -263,16 +263,17 @@ class LogViewer(tk.Toplevel):
     def _open_log_file(self):
         """Open today's log file in the default text editor."""
         import platform
-        import subprocess
+        import subprocess  # nosec B404
         path = get_log_file_path()
         if not os.path.exists(path):
             return
+        # Path is the app-owned log file; these are fixed OS open-file helpers, not shell commands.
         if platform.system() == "Windows":
-            os.startfile(path)
+            os.startfile(path)  # nosec B606
         elif platform.system() == "Darwin":
-            subprocess.call(["open", path])
+            subprocess.call(["open", path])   # nosec B603 B607
         else:
-            subprocess.call(["xdg-open", path])
+            subprocess.call(["xdg-open", path])  # nosec B603 B607
 
     def _export(self):
         path = filedialog.asksaveasfilename(
