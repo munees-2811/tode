@@ -65,6 +65,11 @@ class VideoPlayer(tk.Frame):
         self._poly_items: list[int] = []                    # canvas item IDs
         self._polygons: list[PolygonAnnotation] = []        # committed polys
 
+        # ── playback state ────────────────────────────────────────────────────
+        self._playing       = False
+        self._play_interval = 150   # ms between frames during auto-play
+        self._play_job      = None  # after() job id
+
         # frame→canvas offset (for aspect-ratio letterboxing)
         self._frame_offset_x = 0
         self._frame_offset_y = 0
@@ -124,6 +129,8 @@ class VideoPlayer(tk.Frame):
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_release)
         self.canvas.bind("<Double-Button-1>", self._on_double_click)
         self.canvas.bind("<Escape>",          lambda _: self._cancel_polygon())
+        self.canvas.bind("<space>",           lambda _: self._toggle_play())
+        self.canvas.bind("<FocusIn>",         lambda _: None)  # allow key events
 
         self._draw_empty_hint()
 
@@ -142,15 +149,47 @@ class VideoPlayer(tk.Frame):
         btns = tk.Frame(ctrl, bg=BG_PANEL)
         btns.pack(pady=4)
 
-        for text, cmd in [
-            ("⏮", self._go_first), ("◀", self._prev),
-            ("▶", self._next),     ("⏭", self._go_last),
-        ]:
+        for text, cmd in [("⏮", self._go_first), ("◀", self._prev)]:
             tk.Button(
                 btns, text=text, command=cmd,
                 bg=ACCENT, fg="white", relief=tk.FLAT,
                 width=4, font=("Consolas", 11), cursor="hand2",
             ).pack(side=tk.LEFT, padx=3)
+
+        # ── centred pause / play button ───────────────────────────────────────
+        self._pause_btn = tk.Button(
+            btns, text="▶",
+            command=self._toggle_play,
+            bg=ACCENT, fg="white",
+            activebackground="#9d8fff",
+            activeforeground="white",
+            relief=tk.FLAT,
+            width=5, font=("Consolas", 13, "bold"), cursor="hand2",
+        )
+        self._pause_btn.pack(side=tk.LEFT, padx=6)
+
+        for text, cmd in [("▶", self._next), ("⏭", self._go_last)]:
+            tk.Button(
+                btns, text=text, command=cmd,
+                bg=ACCENT, fg="white", relief=tk.FLAT,
+                width=4, font=("Consolas", 11), cursor="hand2",
+            ).pack(side=tk.LEFT, padx=3)
+
+        # Speed selector
+        speed_frame = tk.Frame(ctrl, bg=BG_PANEL)
+        speed_frame.pack(pady=(0, 2))
+        tk.Label(
+            speed_frame, text="Speed:",
+            bg=BG_PANEL, fg="#8888aa", font=("Consolas", 8),
+        ).pack(side=tk.LEFT, padx=(0, 4))
+        for label, ms in [("0.5×", 300), ("1×", 150), ("2×", 75), ("4×", 38)]:
+            tk.Button(
+                speed_frame, text=label,
+                command=lambda m=ms: self._set_speed(m),
+                bg=BG_DARK, fg="#8888aa",
+                relief=tk.FLAT, padx=6, pady=1,
+                font=("Consolas", 8), cursor="hand2",
+            ).pack(side=tk.LEFT, padx=1)
 
         self.idx_label = tk.Label(
             ctrl, text="Frame —",
@@ -507,10 +546,56 @@ class VideoPlayer(tk.Frame):
                 max(nx0, nx1), max(ny0, ny1))
 
     # ── navigation ────────────────────────────────────────────────────────────
-    def _go_first(self): self._goto(0)
-    def _go_last(self):  self._goto(len(self._indices) - 1)
-    def _prev(self):     self._goto(self._pos - 1)
+    def _go_first(self):
+        self._stop_play()
+        self._goto(0)
+
+    def _go_last(self):
+        self._stop_play()
+        self._goto(len(self._indices) - 1)
+
+    def _prev(self):
+        self._stop_play()
+        self._goto(self._pos - 1)
     def _next(self):     self._goto(self._pos + 1)
+
+    # ── playback ──────────────────────────────────────────────────────────────
+    def _toggle_play(self) -> None:
+        if self._playing:
+            self._stop_play()
+        else:
+            self._start_play()
+
+    def _start_play(self) -> None:
+        if not self._indices:
+            return
+        self._playing = True
+        self._pause_btn.config(text="⏸", bg="#ff6584", fg="white")
+        self._tick()
+
+    def _stop_play(self) -> None:
+        self._playing = False
+        self._pause_btn.config(text="▶", bg=ACCENT, fg="white")
+        if self._play_job is not None:
+            self.after_cancel(self._play_job)
+            self._play_job = None
+
+    def _tick(self) -> None:
+        if not self._playing:
+            return
+        # Stop at last frame instead of wrapping
+        if self._pos >= len(self._indices) - 1:
+            self._stop_play()
+            return
+        self._goto(self._pos + 1)
+        self._play_job = self.after(self._play_interval, self._tick)
+
+    def _set_speed(self, interval_ms: int) -> None:
+        self._play_interval = interval_ms
+        if self._playing:
+            if self._play_job is not None:
+                self.after_cancel(self._play_job)
+            self._play_job = self.after(self._play_interval, self._tick)
 
     def _on_slider(self, val):
         self._goto(int(val), update_slider=False)

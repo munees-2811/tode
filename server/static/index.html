@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>tode — Annotation Platform</title>
+  <link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+  <nav class="topbar">
+    <span class="logo">⬡ tode</span>
+    <span class="tagline">Computer Vision Annotation Platform</span>
+    <div class="nav-actions">
+      <button id="btn-new-project" class="btn btn-accent">+ New Project</button>
+    </div>
+  </nav>
+
+  <!-- ── PROJECTS VIEW ───────────────────────────────────────────── -->
+  <div id="view-projects" class="view active">
+    <div class="page-header">
+      <h1>Projects</h1>
+      <p class="subtitle">Select a project to annotate or create a new one.</p>
+    </div>
+    <div id="project-list" class="project-grid"></div>
+  </div>
+
+  <!-- ── PROJECT DETAIL VIEW ─────────────────────────────────────── -->
+  <div id="view-project" class="view">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <button id="btn-back" class="btn btn-ghost">← Projects</button>
+        <h2 id="proj-name"></h2>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Annotation Type</div>
+        <div class="type-tabs">
+          <button class="type-tab active" data-type="bbox">🔲 BBox</button>
+          <button class="type-tab" data-type="seg">⬠ Segment</button>
+          <button class="type-tab" data-type="cls">🏷 Classify</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Class</div>
+        <input id="class-input" class="inp" placeholder="Type class name…"/>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Frames</div>
+        <div id="frame-strip" class="frame-strip"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Annotations on Frame</div>
+        <ul id="ann-list" class="ann-list"></ul>
+      </div>
+
+      <div class="sidebar-actions">
+        <button id="btn-upload" class="btn btn-ghost">📁 Upload Frames</button>
+        <input id="file-upload" type="file" multiple accept="image/*" style="display:none"/>
+        <button id="btn-save" class="btn btn-green">💾 Save</button>
+        <button id="btn-export" class="btn btn-ghost">⬇ Export ZIP</button>
+      </div>
+    </div>
+
+    <div class="canvas-area">
+      <div class="canvas-toolbar">
+        <button id="btn-view"  class="tool-btn active" title="View">👁 View</button>
+        <button id="btn-draw"  class="tool-btn" title="Draw bounding box">✏ Draw Box</button>
+        <button id="btn-poly"  class="tool-btn" title="Draw polygon">⬠ Polygon</button>
+        <span class="tool-hint" id="tool-hint">View mode — navigate freely</span>
+        <div class="spacer"></div>
+        <button id="btn-prev" class="tool-btn">◀</button>
+        <span id="frame-label" class="frame-counter">—</span>
+        <button id="btn-next" class="tool-btn">▶</button>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NEW PROJECT MODAL ────────────────────────────────────────── -->
+  <div id="modal-new" class="modal-backdrop hidden">
+    <div class="modal">
+      <h2>New Project</h2>
+      <label>Name <input id="np-name" class="inp" placeholder="my-dataset"/></label>
+      <label>Description <input id="np-desc" class="inp" placeholder="optional…"/></label>
+      <label>Classes (comma-separated)
+        <input id="np-classes" class="inp" placeholder="cat, dog, person"/>
+      </label>
+      <div class="modal-actions">
+        <button id="btn-modal-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="btn-modal-create" class="btn btn-accent">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

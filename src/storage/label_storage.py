@@ -213,6 +213,23 @@ class LabelStorage:
                 f, indent=2, sort_keys=True,
             )
 
+    def annotated_frame_indices(self) -> frozenset:
+        """One directory scan — returns frame indices that have any label file."""
+        if not os.path.isdir(self.base_dir):
+            return frozenset()
+        indices: set[int] = set()
+        for fname in os.listdir(self.base_dir):
+            # Accept frame_000042.txt / .seg.txt / .cls.txt / .json
+            if not fname.startswith("frame_"):
+                continue
+            # Strip all extensions: "frame_000042.seg.txt" → "frame_000042"
+            base = fname.split(".")[0]
+            try:
+                indices.add(int(base[6:]))   # "000042" → 42
+            except (ValueError, IndexError):
+                pass
+        return frozenset(indices)
+
     # ── helpers ───────────────────────────────────────────────────────────────
     def _label_path(self, frame_index: int, ext: str = ".txt") -> str:
         return os.path.join(self.base_dir, f"frame_{frame_index:06d}{ext}")

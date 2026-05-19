@@ -10,6 +10,8 @@ from utils.logger import get_logger
 
 log = get_logger("core.FrameExtractor")
 
+_JPEG_PARAMS = [cv2.IMWRITE_JPEG_QUALITY, 92]
+
 
 class FrameExtractor:
     def __init__(
@@ -46,7 +48,6 @@ class FrameExtractor:
         log.info(f"Starting extraction — ~{total} frames expected")
 
         self.loader.seek(0)
-        # Walk every frame sequentially; only yield every Nth (step).
         for raw_idx in range(self.loader.total_frames):
             idx, frame = self.loader.read_next_frame()
             if frame is None:
@@ -80,14 +81,16 @@ class FrameExtractor:
         return frame, saved_path
 
     def _save(self, frame_idx: int, frame) -> str:
-        filename = f"frame_{frame_idx:06d}.png"
-        path     = os.path.join(self.output_dir, filename)
-        cv2.imwrite(path, frame)
+        path = os.path.join(self.output_dir, f"frame_{frame_idx:06d}.jpg")
+        cv2.imwrite(path, frame, _JPEG_PARAMS)
         log.debug(f"Saved frame {frame_idx} → {path}")
         return path
 
     def frame_path(self, frame_index: int) -> str:
-        return os.path.join(self.output_dir, f"frame_{frame_index:06d}.png")
+        """Return expected path; prefer existing PNG for backward compat."""
+        jpg = os.path.join(self.output_dir, f"frame_{frame_index:06d}.jpg")
+        png = os.path.join(self.output_dir, f"frame_{frame_index:06d}.png")
+        return png if (os.path.exists(png) and not os.path.exists(jpg)) else jpg
 
     @property
     def estimated_frame_count(self) -> int:

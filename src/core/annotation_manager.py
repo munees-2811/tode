@@ -175,6 +175,17 @@ class AnnotationManager:
                 f"{ann.frame_path}"
             )
 
+        # Backward compat: .jpg path set but only .png exists (old project)
+        if ann.frame_path:
+            root, ext = os.path.splitext(ann.frame_path)
+            alt_ext = ".png" if ext.lower() == ".jpg" else ".jpg"
+            alt_path = root + alt_ext
+            if os.path.exists(alt_path):
+                frame = cv2.imread(alt_path)
+                if frame is not None:
+                    ann.frame_path = alt_path
+                    return frame
+
         frame = self.loader.read_frame(frame_index)
         if frame is not None and ann.frame_path and not os.path.exists(ann.frame_path):
             try:
@@ -235,8 +246,11 @@ class AnnotationManager:
         log.info(f"Save complete — {saved} label file(s) written")
 
     def load_existing_labels(self):
+        annotated = self.l_store.annotated_frame_indices()
         loaded = 0
         for ann in self._annotations.values():
+            if ann.frame_index not in annotated:
+                continue
             boxes   = self.l_store.load(ann.frame_path)
             polys   = self.l_store.load_polygons(ann.frame_path)
             classes = self.l_store.load_classifications(ann.frame_path)

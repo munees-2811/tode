@@ -72,4 +72,5 @@ class TestImageFrameExtractor:
         assert len(results) == 3
         for _idx, frame, path in results:
             assert os.path.exists(path)
-            assert frame is not None
+            # Fix 2: ImageFrameExtractor skips decode and yields None for frame
+            assert frame is None
