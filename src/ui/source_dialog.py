@@ -32,6 +32,7 @@ class SourceDialog(tk.Toplevel):
         self.result: dict | None = None
         self._selected_path = tk.StringVar(value="")
         self._selected_type = tk.StringVar(value="")
+        self._step_var = tk.IntVar(value=1)
 
         self._build()
         self.wait_window()
@@ -66,6 +67,25 @@ class SourceDialog(tk.Toplevel):
         ]
         for src_type, icon, title, sub, hover_bg in cards:
             self._make_card(cards_frame, src_type, icon, title, sub, hover_bg)
+
+        # Step selector — only relevant for video
+        step_frame = tk.Frame(self, bg=BG_DARK)
+        step_frame.pack(fill=tk.X, padx=24, pady=(0, 4))
+        tk.Label(step_frame, text="Video frame step:",
+                 bg=BG_DARK, fg="#777799",
+                 font=("Consolas", 8)).pack(side=tk.LEFT)
+        tk.Spinbox(
+            step_frame,
+            from_=1, to=30, width=4,
+            textvariable=self._step_var,
+            bg=BG_PANEL, fg=TEXT_LIGHT,
+            buttonbackground=BG_PANEL,
+            relief=tk.FLAT, font=("Consolas", 9),
+        ).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Label(step_frame,
+                 text="  (1=every frame, 5=every 5th, 30=~1fps for 30fps video)",
+                 bg=BG_DARK, fg="#555577",
+                 font=("Consolas", 7)).pack(side=tk.LEFT, padx=4)
 
         # Path preview bar
         preview = tk.Frame(self, bg=BG_PANEL, height=28)
@@ -232,6 +252,7 @@ class SourceDialog(tk.Toplevel):
                                  parent=self)
             return
 
-        self.result = {"type": src, "path": path}
+        step = self._step_var.get() if src == "video" else 1
+        self.result = {"type": src, "path": path, "step": max(1, step)}
         log.info(f"Source confirmed — type={src}, path={path}")
         self.destroy()

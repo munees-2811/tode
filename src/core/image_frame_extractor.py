@@ -51,22 +51,22 @@ class ImageFrameExtractor:
         log.info(f"Starting image extraction — {total} image(s)")
 
         for idx in range(total):
-            frame = self.loader.read_frame(idx)
-            if frame is None:
-                log.warning(f"Skipping index {idx} — could not read image")
+            src_path = self.loader.get_image_path(idx)
+            if not src_path:
+                log.warning(f"Skipping index {idx} — no image path")
                 continue
 
             saved_path = (
                 self._copy_to_output(idx)
                 if self.copy_files
-                else self.loader.get_image_path(idx)
+                else src_path
             )
             extracted += 1
 
             if extracted % 50 == 0:
                 log.debug(f"Processed {extracted}/{total} images")
 
-            yield idx, frame, saved_path
+            yield idx, None, saved_path
 
         log.info(f"Image extraction complete — {extracted}/{total} succeeded")
 

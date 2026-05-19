@@ -265,7 +265,7 @@ class MainWindow(tk.Frame):
             ],
         )
         if path:
-            self._load_from_result({"type": "video", "path": path})
+            self._load_from_result({"type": "video", "path": path, "step": 1})
 
     def _open_image_direct(self):
         """Quick-open a single image or image folder."""
@@ -343,12 +343,12 @@ class MainWindow(tk.Frame):
         log.info(f"Loading source — type={src_type}, path={path}")
 
         if src_type == "video":
-            self._load_video(path)
+            self._load_video(path, step=result.get("step", 1))
         elif src_type in ("image", "image_folder"):
             self._load_images(path)
 
     # ── video loader ──────────────────────────────────────────────────────────
-    def _load_video(self, path: str):
+    def _load_video(self, path: str, step: int = 1):
         self._set_status(f"Opening video: {os.path.basename(path)}…")
 
         def _on_bg_progress(done, total):
@@ -361,7 +361,7 @@ class MainWindow(tk.Frame):
         def _work():
             loader    = VideoLoader(path)
             loader.open()
-            extractor = FrameExtractor(loader, step=1, save_frames=True)
+            extractor = FrameExtractor(loader, step=step, save_frames=True)
             yolo      = YOLOAnnotator()
             yolo.load()
             vname = os.path.splitext(os.path.basename(path))[0]
