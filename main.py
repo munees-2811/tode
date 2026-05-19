@@ -25,7 +25,7 @@ from ui.main_window import MainWindow
 
 def main():
     root = tk.Tk()
-    root.title("tode  |  YOLO26x")
+    root.title("tode")
     root.geometry("1280x800")
     root.minsize(1024, 700)
 
