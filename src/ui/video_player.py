@@ -49,6 +49,9 @@ class VideoPlayer(tk.Frame):
         self._pos = 0
         self._boxes: list[BoundingBox] = []
         self._photo = None
+        self._photo_size = (0, 0)
+        self._image_id = None
+        self._last_frame_id = None
         self._current_frame = None
 
         # ── draw-mode state ───────────────────────────────────────────────────
@@ -410,13 +413,15 @@ class VideoPlayer(tk.Frame):
             self._poly_items.append(dot)
         if len(cv) >= 2:
             flat = [c for pt in cv for c in pt]
-            line = self.canvas.create_line(*flat, fill=col, width=2)
+            line = self.canvas.create_line(
+                *flat, fill=col, width=2, tags=("overlay",)
+            )
             self._poly_items.append(line)
         # Close-line hint
         if len(cv) >= 3:
             close = self.canvas.create_line(
                 cv[-1][0], cv[-1][1], cv[0][0], cv[0][1],
-                fill=col, width=1, dash=(4, 4),
+                fill=col, width=1, dash=(4, 4), tags=("overlay",)
             )
             self._poly_items.append(close)
 
@@ -718,6 +723,11 @@ class VideoPlayer(tk.Frame):
 
     def _clear_hint(self):
         self.canvas.delete("hint")
+        self.canvas.delete("image")
+        self.canvas.delete("overlay")
+        self._image_id = None
+        self._photo = None
+        self._photo_size = (0, 0)
         self.canvas.config(cursor="arrow")
 
     def _on_hint_click(self, _event):
@@ -750,10 +760,32 @@ class VideoPlayer(tk.Frame):
             from utils.image_utils import draw_boxes
             frame = draw_boxes(frame, self._boxes)
 
-        self._photo = bgr_to_photoimage(frame, cw, ch)
-        self.canvas.delete("all")
-        self.canvas.create_image(cw // 2, ch // 2,
-                                 image=self._photo, anchor=tk.CENTER)
+        current_frame_id = id(frame)
+        if (self._photo is None
+                or self._photo_size != (cw, ch)
+                or self._last_frame_id != current_frame_id):
+            self._photo = bgr_to_photoimage(frame, cw, ch)
+            self._photo_size = (cw, ch)
+            self._last_frame_id = current_frame_id
+            if self._image_id is None:
+                self._image_id = self.canvas.create_image(
+                    cw // 2, ch // 2,
+                    image=self._photo, anchor=tk.CENTER,
+                    tags=("image",),
+                )
+            else:
+                self.canvas.itemconfig(self._image_id, image=self._photo)
+        else:
+            if self._image_id is None:
+                self._image_id = self.canvas.create_image(
+                    cw // 2, ch // 2,
+                    image=self._photo, anchor=tk.CENTER,
+                    tags=("image",),
+                )
+            else:
+                self.canvas.coords(self._image_id, cw // 2, ch // 2)
+
+        self.canvas.delete("overlay")
 
         # Highlight selected box + draw resize handles on top
         if (self._selected_idx is not None
@@ -761,7 +793,7 @@ class VideoPlayer(tk.Frame):
             x1, y1, x2, y2 = self._box_pixel_rect(self._boxes[self._selected_idx])
             self.canvas.create_rectangle(
                 x1, y1, x2, y2,
-                outline="#ffaa00", width=2, dash=(2, 2), tags="selection",
+                outline="#ffaa00", width=2, dash=(2, 2), tags=("overlay", "selection"),
             )
             s = self.HANDLE_SIZE
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2
@@ -772,7 +804,8 @@ class VideoPlayer(tk.Frame):
             ]:
                 self.canvas.create_rectangle(
                     hx - s, hy - s, hx + s, hy + s,
-                    fill="#ffaa00", outline="white", width=1, tags="handle",
+                    fill="#ffaa00", outline="white", width=1,
+                    tags=("overlay", "handle"),
                 )
 
         # Draw committed polygon overlays (semantic colours + opacity)
@@ -804,12 +837,13 @@ class VideoPlayer(tk.Frame):
                 self.canvas.create_polygon(
                     *flat,
                     outline=color, fill=color, stipple=stipple,
-                    width=2, tags="polygon",
+                    width=2, tags=("overlay", "polygon"),
                 )
                 # Solid outline on top so the border is always crisp
                 self.canvas.create_polygon(
                     *flat,
-                    outline=color, fill="", width=2, tags="polygon",
+                    outline=color, fill="", width=2,
+                    tags=("overlay", "polygon"),
                 )
             # Class label at centroid
             if cv_pts:
@@ -819,12 +853,12 @@ class VideoPlayer(tk.Frame):
                 self.canvas.create_text(
                     cx_c + 1, cy_c + 1, text=poly.class_name,
                     fill="#000000", font=("Helvetica", 8, "bold"),
-                    tags="polygon",
+                    tags=("overlay", "polygon"),
                 )
                 self.canvas.create_text(
                     cx_c, cy_c, text=poly.class_name,
                     fill="white", font=("Helvetica", 8, "bold"),
-                    tags="polygon",
+                    tags=("overlay", "polygon"),
                 )
 
         # Polygon preview (in-progress)
