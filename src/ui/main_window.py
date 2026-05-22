@@ -72,6 +72,7 @@ class MainWindow(tk.Frame):
             on_open_request=self._open_source,
             on_box_edited=self._on_box_edited,
             on_box_selected=self._on_box_selected_in_canvas,
+            on_polygon_drawn=self._on_polygon_drawn,
         )
         self.player.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                          padx=6, pady=6)
@@ -474,10 +475,35 @@ class MainWindow(tk.Frame):
     def _on_frame_change(self, frame_index: int, bgr_frame):
         if self.manager is None:
             return
-        ann   = self.manager.get_annotation(frame_index)
-        boxes = ann.boxes if ann else []
+        ann      = self.manager.get_annotation(frame_index)
+        boxes    = ann.boxes    if ann else []
+        polygons = ann.polygons if ann else []
         self.player.set_overlay_boxes(boxes)
+        self.player.set_overlay_polygons(polygons)
         self.ann_panel.update_boxes(boxes, self.manager.yolo.class_names)
+
+    # ── polygon drawn callback ────────────────────────────────────────────────
+    def _on_polygon_drawn(self, points: list):
+        if self.manager is None:
+            return
+        from models.annotation_model import PolygonAnnotation
+        idx      = self.player.current_frame_index
+        cls_name = self.ann_panel.get_selected_class()
+        class_names = self.manager.yolo.class_names
+        cls_id   = next(
+            (k for k, v in class_names.items()
+             if v.lower() == cls_name.lower()), 0
+        )
+        poly = PolygonAnnotation(
+            class_id=cls_id, class_name=cls_name, points=points
+        )
+        self.manager.add_polygon(idx, poly)
+        ann = self.manager.get_annotation(idx)
+        self.player.set_overlay_polygons(ann.polygons)
+        self._set_status(
+            f"Polygon added to frame {idx} — '{cls_name}', "
+            f"{len(points)} pts. Total: {len(ann.polygons)} polygon(s)."
+        )
 
     # ── manual box drawn ──────────────────────────────────────────────────────
     def _on_box_drawn(self, x1_n: float, y1_n: float,

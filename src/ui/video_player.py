@@ -1,3 +1,4 @@
+
 """
 Canvas widget — displays frames + overlays.
 Supports two modes:
@@ -168,7 +169,7 @@ class VideoPlayer(tk.Frame):
         )
         self._pause_btn.pack(side=tk.LEFT, padx=6)
 
-        for text, cmd in [("▶", self._next), ("⏭", self._go_last)]:
+        for text, cmd in [("⏩", self._next), ("⏭", self._go_last)]:
             tk.Button(
                 btns, text=text, command=cmd,
                 bg=ACCENT, fg="white", relief=tk.FLAT,
@@ -182,14 +183,18 @@ class VideoPlayer(tk.Frame):
             speed_frame, text="Speed:",
             bg=BG_PANEL, fg="#8888aa", font=("Consolas", 8),
         ).pack(side=tk.LEFT, padx=(0, 4))
+        self._speed_btns: dict[int, tk.Button] = {}
         for label, ms in [("0.5×", 300), ("1×", 150), ("2×", 75), ("4×", 38)]:
-            tk.Button(
+            b = tk.Button(
                 speed_frame, text=label,
                 command=lambda m=ms: self._set_speed(m),
                 bg=BG_DARK, fg="#8888aa",
                 relief=tk.FLAT, padx=6, pady=1,
                 font=("Consolas", 8), cursor="hand2",
-            ).pack(side=tk.LEFT, padx=1)
+            )
+            b.pack(side=tk.LEFT, padx=1)
+            self._speed_btns[ms] = b
+        self._speed_btns[150].config(bg=ACCENT, fg="white")  # default 1×
 
         self.idx_label = tk.Label(
             ctrl, text="Frame —",
@@ -557,7 +562,9 @@ class VideoPlayer(tk.Frame):
     def _prev(self):
         self._stop_play()
         self._goto(self._pos - 1)
-    def _next(self):     self._goto(self._pos + 1)
+
+    def _next(self):
+        self._goto(self._pos + 1)
 
     # ── playback ──────────────────────────────────────────────────────────────
     def _toggle_play(self) -> None:
@@ -592,6 +599,11 @@ class VideoPlayer(tk.Frame):
 
     def _set_speed(self, interval_ms: int) -> None:
         self._play_interval = interval_ms
+        for ms, btn in self._speed_btns.items():
+            if ms == interval_ms:
+                btn.config(bg=ACCENT, fg="white")
+            else:
+                btn.config(bg=BG_DARK, fg="#8888aa")
         if self._playing:
             if self._play_job is not None:
                 self.after_cancel(self._play_job)
