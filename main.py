@@ -13,24 +13,36 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
-
+#tedo
 import cv2
 
 cv2.setNumThreads(0)
 
 import tkinter as tk
 
+try:
+    from tkinterdnd2 import TkinterDnD
+    _DND_AVAILABLE = True
+except ImportError:
+    _DND_AVAILABLE = False
+
 from ui.main_window import MainWindow
 
 
 def main():
-    root = tk.Tk()
+    if _DND_AVAILABLE:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
     root.title("tode")
     root.geometry("1280x800")
     root.minsize(1024, 700)
 
     app = MainWindow(root)
     app.pack(fill=tk.BOTH, expand=True)
+
+    if _DND_AVAILABLE:
+        app.setup_drag_drop()
 
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
