@@ -17,6 +17,7 @@ from storage.label_storage import LabelStorage
 from ui.annotation_panel import AnnotationPanel
 from ui.export_dialog import ExportDialog
 from ui.log_viewer import LogViewer
+from ui.segmentation_panel import SegmentationPanel
 from ui.source_dialog import SourceDialog
 from ui.video_player import VideoPlayer
 from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
@@ -73,6 +74,7 @@ class MainWindow(tk.Frame):
             on_box_edited=self._on_box_edited,
             on_box_selected=self._on_box_selected_in_canvas,
             on_polygon_drawn=self._on_polygon_drawn,
+            on_mode_change=self._on_mode_change,
         )
         self.player.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                          padx=6, pady=6)
@@ -89,6 +91,20 @@ class MainWindow(tk.Frame):
             on_box_select     = self._on_box_selected_in_list,
         )
         self.ann_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
+
+        # ── semantic segmentation panel (hidden until polygon mode) ────────
+        self._class_color_map: dict[str, str] = {}
+        self.seg_panel = SegmentationPanel(
+            content,
+            on_save_click     = self._save,
+            on_clear_click    = self._clear_seg_frame,
+            on_delete_poly    = self._delete_polygon,
+            on_poly_select    = self._on_poly_selected,
+            on_class_changed  = self._on_seg_class_changed,
+            on_opacity_change = self._on_seg_opacity_changed,
+        )
+        # seg_panel is shown/hidden by the polygon mode button in video_player
+        self.seg_panel.pack_forget()
 
         self._build_status()
         self._build_progress()
@@ -479,6 +495,25 @@ class MainWindow(tk.Frame):
         self.player.set_overlay_boxes(boxes)
         self.player.set_overlay_polygons(polygons)
         self.ann_panel.update_boxes(boxes, self.manager.yolo.class_names)
+        # refresh seg panel polygon list
+        class_names = list(self.manager.yolo.class_names.values())
+        self.seg_panel.update_polygons(polygons, class_names)
+        self._sync_color_map()
+
+    # ── mode change callback (panel swap) ─────────────────────────────────────
+    def _on_mode_change(self, mode: str) -> None:
+        """Show the segmentation panel in polygon mode; bbox panel otherwise."""
+        if mode == "polygon":
+            self.ann_panel.pack_forget()
+            self.seg_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
+            # seed class names from YOLO model if available
+            if self.manager:
+                self.seg_panel.set_class_names(
+                    list(self.manager.yolo.class_names.values())
+                )
+        else:
+            self.seg_panel.pack_forget()
+            self.ann_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=6)
 
     # ── polygon drawn callback ────────────────────────────────────────────────
     def _on_polygon_drawn(self, points: list):
@@ -486,7 +521,9 @@ class MainWindow(tk.Frame):
             return
         from models.annotation_model import PolygonAnnotation
         idx      = self.player.current_frame_index
-        cls_name = self.ann_panel.get_selected_class()
+        # Use class from seg_panel (semantic) if polygon mode active
+        cls_name = self.seg_panel.get_selected_class()
+        color    = self.seg_panel.get_selected_color()
         class_names = self.manager.yolo.class_names
         cls_id   = next(
             (k for k, v in class_names.items()
@@ -498,10 +535,59 @@ class MainWindow(tk.Frame):
         self.manager.add_polygon(idx, poly)
         ann = self.manager.get_annotation(idx)
         self.player.set_overlay_polygons(ann.polygons)
+        self._sync_color_map()
+        self.seg_panel.update_polygons(
+            ann.polygons, list(class_names.values())
+        )
         self._set_status(
             f"Polygon added to frame {idx} — '{cls_name}', "
             f"{len(points)} pts. Total: {len(ann.polygons)} polygon(s)."
         )
+
+    # ── seg panel callbacks ───────────────────────────────────────────────────
+
+    def _on_seg_class_changed(self, class_name: str, color: str) -> None:
+        """Called when user picks a different semantic class in seg_panel."""
+        self._class_color_map[class_name] = color
+        self.player.set_active_poly_color(color)
+        self.player.set_class_color_map(dict(self._class_color_map))
+
+    def _on_seg_opacity_changed(self, value: float) -> None:
+        self.player.set_poly_opacity(value)
+
+    def _on_poly_selected(self, index: int | None) -> None:
+        """Highlight the selected polygon in the canvas (future use)."""
+        pass
+
+    def _delete_polygon(self, poly_index: int) -> None:
+        if not self._require_manager():
+            return
+        idx = self.player.current_frame_index
+        self.manager.remove_polygon(idx, poly_index)
+        ann = self.manager.get_annotation(idx)
+        self.player.set_overlay_polygons(ann.polygons)
+        self.seg_panel.update_polygons(
+            ann.polygons, list(self.manager.yolo.class_names.values())
+        )
+        self._set_status(f"Deleted polygon [{poly_index}] from frame {idx}.")
+
+    def _clear_seg_frame(self) -> None:
+        """Clear all polygons on the current frame."""
+        if not self._require_manager():
+            return
+        idx = self.player.current_frame_index
+        self.manager.clear_polygons(idx)
+        ann = self.manager.get_annotation(idx)
+        self.player.set_overlay_polygons(ann.polygons)
+        self.seg_panel.update_polygons([], [])
+        self._set_status(f"Cleared all polygons on frame {idx}.")
+
+    def _sync_color_map(self) -> None:
+        """Push current class→colour mapping into the canvas."""
+        # merge seg_panel class colours into the map
+        for cls in self.seg_panel._classes:
+            self._class_color_map[cls["name"]] = cls["color"]
+        self.player.set_class_color_map(dict(self._class_color_map))
 
     # ── manual box drawn ──────────────────────────────────────────────────────
     def _on_box_drawn(self, x1_n: float, y1_n: float,
@@ -827,3 +913,4 @@ class MainWindow(tk.Frame):
         if self.manager:
             self.manager.loader.release()
         self.master.destroy()
+
