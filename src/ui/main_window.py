@@ -364,7 +364,6 @@ class MainWindow(tk.Frame):
             loader.open()
             extractor = FrameExtractor(loader, step=step, save_frames=True)
             yolo      = YOLOAnnotator()
-            yolo.load()
             vname = os.path.splitext(os.path.basename(path))[0]
             mgr   = AnnotationManager(
                 loader, extractor, yolo,
@@ -424,7 +423,6 @@ class MainWindow(tk.Frame):
 
             extractor = ImageFrameExtractor(loader, copy_files=True)
             yolo      = YOLOAnnotator()
-            yolo.load()
 
             src_name = (
                 os.path.basename(path.rstrip("/\\")) or "images"
