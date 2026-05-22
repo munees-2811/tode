@@ -150,7 +150,7 @@ class VideoPlayer(tk.Frame):
         btns = tk.Frame(ctrl, bg=BG_PANEL)
         btns.pack(pady=4)
 
-        for text, cmd in [("⏮", self._go_first), ("◀", self._prev)]:
+        for text, cmd in [("⏮", self._go_first), ("⏪", self._prev)]:
             tk.Button(
                 btns, text=text, command=cmd,
                 bg=ACCENT, fg="white", relief=tk.FLAT,
