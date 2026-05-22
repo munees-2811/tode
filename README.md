@@ -1,119 +1,167 @@
 # tode
 
-A desktop application for annotating video frames and images with bounding boxes, powered by YOLO auto-annotation.
+A fast, open-source annotation tool for video frames and images — bounding boxes, polygon segmentation, and image classification — powered by YOLO auto-annotation and a built-in web server for multi-user workflows.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Desktop App](#desktop-app)
+  - [Opening a Source](#opening-a-source)
+  - [Annotation Types](#annotation-types)
+  - [Keyboard Shortcuts](#keyboard-shortcuts)
+  - [Playback Controls](#playback-controls)
+  - [YOLO Models](#yolo-models)
+  - [Exporting](#exporting)
+- [Web Server](#web-server)
+  - [Starting the Server](#starting-the-server)
+  - [REST API](#rest-api)
+- [Performance](#performance)
+- [Output Structure](#output-structure)
+- [Project Structure](#project-structure)
+- [Running Tests](#running-tests)
+- [Docker](#docker)
+- [License](#license)
 
 ---
 
 ## Features
 
-- **Auto-annotation** — one-click YOLO inference on a single frame or all frames at once
-- **YOLO model selector** — choose any YOLO26 / YOLO11 / YOLOv8 variant from a dropdown, or browse for a local `.pt` file
-- **Manual annotation** — click and drag to draw bounding boxes; assign any class name
-- **Video & image support** — load MP4/AVI/MOV/MKV videos, single images, or entire image folders (recursive)
-- **YouTube download** — paste a URL, preview metadata, choose quality, and download before annotating
-- **YOLO-format labels** — annotations saved as standard `.txt` files (class cx cy w h, normalised) compatible with Ultralytics training pipelines
-- **Dataset export** — one-click export to **YOLO** (images/ + labels/ + data.yaml) or **COCO** (single annotations.json) format. Non-annotated frames are skipped automatically
-- **Class names persist** — a `classes.json` sidecar keeps label names across sessions
-- **Log viewer** — live in-app log window for debugging
+**Desktop app (Tkinter)**
+- Auto-annotate with any YOLO26 / YOLO11 / YOLOv8 model — one frame or all at once
+- Three annotation types: **bounding box**, **polygon segmentation**, **image classification**
+- Click-and-drag box drawing with full resize / move handles
+- Polygon draw mode — click to place vertices, double-click to close, Escape to cancel
+- Play/pause video with variable speed (0.5× / 1× / 2× / 4×) and Space bar toggle
+- Adjustable **frame step** — load every Nth frame for fast navigation on long videos
+- Manual class names + confidence threshold slider
+- Live log viewer, class-filter, per-frame undo (clear), label persistence across sessions
+
+**Export formats**
+- YOLO (images/ + labels/ + data.yaml)
+- COCO JSON
+- Pascal VOC XML
+- CSV
+- JSON
+
+**Web server (FastAPI)**
+- REST API for projects, frame upload, per-frame annotations, ZIP export
+- Dark-theme SPA at `http://localhost:8000` — works in any browser
+- Canvas annotation (bbox / polygon / classification), frame strip, keyboard navigation
+
+**Performance**
+- Frames saved as **JPEG** (not PNG) — 5–10× faster writes, 10× smaller files
+- Image folder loading skips unnecessary decoding — near-instant for large folders
+- Label scan does one `os.listdir()` at startup instead of per-frame file stats
+- Background frame extraction — UI is responsive immediately after opening a video
 
 ---
 
-## Requirements
-
-| Dependency | Version |
-|---|---|
-| Python | **3.11 or 3.12** recommended (3.14 has no prebuilt wheels for cv2/ultralytics) |
-| ultralytics | ≥ 8.0.0 |
-| opencv-python | ≥ 4.8.0 |
-| Pillow | ≥ 10.0.0 |
-| numpy | ≥ 1.24.0 |
-| yt-dlp | ≥ 2024.1.0 (YouTube feature only) |
-
----
-
-## Installation
+## Quick Start
 
 ```bash
-# 1. Clone the repo
+# 1. Clone
 git clone https://github.com/tedo001/tode.git
 cd tode
 
-# 2. Create a virtual environment (Python 3.11 or 3.12)
+# 2. Virtual environment (Python 3.11 or 3.12)
 python3.12 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
+# 3. Install desktop dependencies
 pip install -r requirements.txt
 
-# 4. Run
+# 4. Launch the desktop app
 python main.py
+
+# 5. (Optional) Install and launch the web server
+pip install -r requirements-server.txt
+python run_server.py               # → http://localhost:8000
 ```
-
-### PyCharm setup
-
-1. `Settings` → `Project` → `Python Interpreter` → `Add Interpreter` → `Virtualenv`
-2. Select **Python 3.11 or 3.12** as the base interpreter
-3. Open the built-in terminal → `pip install -r requirements.txt`
-4. Run `main.py`
 
 ---
 
-## Loading a local video
+## Desktop App
 
-**Quickest way — click the canvas:**
-> When no source is loaded the canvas shows a `📂` prompt. Click it to open a file picker.
+### Opening a Source
 
-**Toolbar buttons:**
-
-| Button | Action |
+| Toolbar button | Action |
 |---|---|
-| `📂 Open` | Tabbed dialog — Video / Image / Image Folder / YouTube |
-| `🎬 Video` | Direct file picker for video files |
-| `🖼 Image` | Pick a single image or an image folder |
-| `▶ YouTube` | Opens the YouTube download tab directly |
+| `📂 Open` | Tabbed dialog — Video / Image / Image Folder |
+| `🎬 Video` | Direct video file picker |
+| `🖼 Image` | Single image or image folder |
+
+**Click the canvas** when no source is loaded to open the file picker directly.
 
 **Supported video formats:** MP4, AVI, MOV, MKV, WEBM, FLV, WMV
 
-### Instant video open
+**Supported image formats:** JPG, PNG, BMP, TIFF, WEBP
 
-Long videos open **instantly** — the frame index is built in memory before any decoding happens, so you can start annotating right away. Frame PNGs are extracted in a background thread; the status bar shows progress (`Extracting frames in background… 240/3000`). Any frame you navigate to before the worker reaches it is decoded on-demand and cached.
-
----
-
-## Box editing
-
-After drawing or YOLO-detecting a box you can fix it without redrawing:
-
-1. **Select** — click anywhere inside a box. It highlights in orange with 8 resize handles (4 corners, 4 edges).
-2. **Resize** — drag any corner or edge handle.
-3. **Move** — drag the body of a selected box.
-4. **Deselect** — click an empty area, or switch to View mode.
-5. **From the list** — clicking a row in the **DETECTED BOXES** list also selects that box on the canvas. The selection stays in sync both ways.
-
-Live preview while dragging; release commits the change.
+**Frame Step** — the Open dialog includes a "Video frame step" spinbox (1–30). At `step=5` a 30 fps video loads 6× fewer frames; at `step=1` (default) every frame is indexed. Frames not yet extracted from the background thread are decoded on-demand.
 
 ---
 
-## Keyboard shortcuts (labelImg-style)
+### Annotation Types
+
+Select the annotation type from the mode bar above the canvas.
+
+#### Bounding Box (`W` key → Draw mode)
+1. Click and drag on the canvas to draw a box
+2. Click inside a drawn box to select it — 8 resize handles appear
+3. Drag a handle to resize; drag the body to move
+4. Click an empty area or press `V` / `Esc` to deselect
+
+#### Polygon Segmentation (`⬠ Polygon` button)
+1. Click to place each vertex
+2. **Double-click** to close the polygon and commit it
+3. **Escape** cancels the polygon in progress
+4. Saved in YOLO-seg format (`.seg.txt` sidecar)
+
+#### Image Classification (`🏷 Cls` button)
+- Assigns a single class label to the whole frame (no spatial extent)
+- Saved as a `.cls.txt` sidecar
+
+---
+
+### Keyboard Shortcuts
 
 | Key | Action |
 |---|---|
 | `A` / `←` | Previous frame |
 | `D` / `→` | Next frame |
-| `Home` / `End` | Jump to first / last frame |
+| `Home` | Jump to first frame |
+| `End` | Jump to last frame |
 | `W` | Switch to **Draw Box** mode |
-| `V` / `Esc` | Switch back to **View** mode |
+| `V` / `Esc` | Switch to **View** mode / cancel polygon |
+| `Space` | Toggle play / pause |
 | `Y` | Run YOLO on the current frame |
 | `Ctrl+S` | Save annotations |
 | `Ctrl+E` | Export dataset |
 | `Ctrl+O` | Open source dialog |
-| `Delete` | Clear all boxes on the current frame |
+| `Delete` | Clear all annotations on the current frame |
 
 ---
 
-## Choosing a YOLO model
+### Playback Controls
 
-The **ANNOTATION PANEL → Auto (YOLO)** tab has a model dropdown at the top.
+The navigation bar has five buttons:
+
+```
+⏮   ◀   ▶/⏸   ▶   ⏭
+```
+
+- **▶** (purple) — click or press `Space` to start auto-advance
+- **⏸** (pink) — shown while playing; click or press `Space` to pause
+- Speed row below: `0.5×` `1×` `2×` `4×`
+- Any navigation button (⏮ ◀ ▶ ⏭) stops playback automatically
+
+---
+
+### YOLO Models
+
+The **Annotation Panel → Auto (YOLO)** tab has a model dropdown.
 
 | Model | Size | Speed | Accuracy |
 |---|---|---|---|
@@ -123,282 +171,244 @@ The **ANNOTATION PANEL → Auto (YOLO)** tab has a model dropdown at the top.
 | `yolo26s` | Small | Faster | OK |
 | `yolo26n` | Nano | Fastest | Basic |
 
-Models are **auto-downloaded** from the Ultralytics hub on first use.
-
-**Use a local `.pt` file:** click the `📂` button next to the dropdown and browse to your weights file.
+Models are **auto-downloaded** on first use. To use a local `.pt` or `.onnx` file, click the `📂` button next to the dropdown.
 
 ---
 
-## Annotating
+### Exporting
 
-### Auto (YOLO)
+Click **📤 Export** and choose a format and output folder.
 
-1. Load a video or image folder
-2. Adjust the **Confidence Threshold** slider (default 0.45)
-3. Optionally type class names in **Filter Classes** (comma-separated) to keep only those classes
-4. Click **⚡ YOLO This Frame** for the current frame, or **🔁 YOLO All Frames** to process everything
+| Format | Output |
+|---|---|
+| **YOLO** | `images/` + `labels/` + `data.yaml` — ready for `yolo train` |
+| **COCO** | `annotations.json` (images, annotations, categories) |
+| **Pascal VOC** | One XML per image |
+| **CSV** | One row per bounding box |
+| **JSON** | Custom JSON with all annotation types |
 
-### Manual
+Only annotated frames are exported. Frame files are renumbered sequentially (`img_1`, `img_2`, …) so images and labels always match 1-to-1.
 
-1. Switch to the **✏ Manual** tab in the annotation panel
-2. Select a class from the dropdown (populated from the loaded YOLO model), or type a custom class name
-3. Click **✏ Draw Box** in the mode bar above the canvas
-4. Click and drag on the frame to draw a box
-5. Repeat across frames, then click **💾 Save Annotations**
-
----
-
-## Exporting (YOLO or COCO)
-
-Click **📤 Export** in the toolbar to package your annotations as a training-ready dataset.
-
-A dialog asks for:
-- **Format** — YOLO or COCO
-- **Output folder** — defaults to `output/exports/`
-
-**Only annotated frames are exported.** Frames with no boxes are skipped entirely, so image and label files always match 1-to-1 (`img_000003.png` ↔ `img_000003.txt`).
-
-**Default location:** `~/Documents/labeled_img/<source_name>/` — easy to find. You can browse to any other folder in the dialog.
-
-### YOLO export layout
-
-```
-~/Documents/labeled_img/<source_name>/
-├── images/
-│   ├── img_1.png
-│   ├── img_2.png
-│   └── img_3.png              ← sequential 1-based naming
-├── labels/                    ← labels match images 1-to-1
-│   ├── img_1.txt
-│   ├── img_2.txt
-│   └── img_3.txt
-├── classes.txt                ← one class name per line
-└── data.yaml                  ← Ultralytics dataset config
-```
-
-Non-annotated frames are skipped entirely, then the remaining annotated frames are renumbered `1..N` in original order.
-
-`data.yaml` is ready for training:
+**Train immediately after export (YOLO format):**
 ```bash
 yolo train data=export_dir/data.yaml model=yolo26x.pt epochs=100
 ```
 
-### COCO export layout
+---
 
-```
-export_dir/
-├── images/
-│   ├── img_000000.png
-│   └── img_000002.png
-└── annotations.json           ← COCO JSON (images + annotations + categories)
+## Web Server
+
+The web server is a standalone FastAPI app that does **not** modify `main.py` or any desktop code. Run it alongside or instead of the desktop app.
+
+### Starting the Server
+
+```bash
+pip install -r requirements-server.txt
+python run_server.py
 ```
 
-The JSON contains the full COCO schema:
-- `images` — file_name, width, height, id
-- `annotations` — bbox in `[x_top_left, y_top_left, width, height]` pixels, area, category_id, image_id
-- `categories` — id (1-based), name
+Open `http://localhost:8000` in a browser.
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `TODE_HOST` | `0.0.0.0` | Bind address |
+| `TODE_PORT` | `8000` | Port |
+| `TODE_RELOAD` | `false` | Uvicorn auto-reload (dev mode) |
+
+### REST API
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/api/projects` | List all projects |
+| `POST` | `/api/projects` | Create a project |
+| `GET` | `/api/projects/{id}` | Get project metadata |
+| `DELETE` | `/api/projects/{id}` | Delete a project |
+| `PATCH` | `/api/projects/{id}/classes` | Update class list |
+| `POST` | `/api/projects/{id}/upload` | Upload frame images |
+| `GET` | `/api/projects/{id}/export?fmt=yolo` | Download annotations as ZIP |
+| `GET` | `/api/projects/{id}/frames` | List frames |
+| `GET` | `/api/projects/{id}/frames/{idx}/image` | Get frame image |
+| `GET` | `/api/projects/{id}/frames/{idx}/annotations` | Get frame annotations |
+| `POST` | `/api/projects/{id}/frames/{idx}/annotations` | Save frame annotations |
+
+All annotation endpoints accept and return JSON with `boxes`, `polygons`, and `classifications` arrays.
 
 ---
 
-## Output structure (raw working directory)
+## Performance
+
+| Scenario | Before | After |
+|---|---|---|
+| Write one 1080p frame | ~40 ms (PNG) | ~6 ms (JPEG) |
+| 1000-frame background extraction | ~40 s disk I/O | ~6 s |
+| Load 1000-image folder | Decodes all 1000 images | Zero decodes — path copy only |
+| Startup label scan (1000 frames) | ~3000 `stat()` calls | 1 `listdir()` call |
+| 10-min 30fps video at `step=5` | 18 000 frames | 3 600 frames |
+
+Frames are cached as JPEG on first access. Subsequent navigation reads the JPEG from disk (~5 ms per frame). Old projects with `.png` frames are supported automatically via a fallback path.
+
+---
+
+## Output Structure
 
 ```
 output/
 ├── frames/
-│   └── <video_name>/
-│       ├── frame_000000.png
-│       └── frame_000001.png
+│   └── <source_name>/
+│       ├── frame_000000.jpg        ← JPEG cache (new projects)
+│       └── frame_000005.jpg
 ├── labels/
-│   └── <video_name>/
-│       ├── frame_000000.txt    ← YOLO format label (working copy)
-│       ├── frame_000001.txt
-│       └── classes.json        ← class id → name mapping
-└── exports/                    ← created by the Export button
-    └── <your_export_name>/
+│   └── <source_name>/
+│       ├── frame_000000.txt        ← YOLO bbox  (class cx cy w h)
+│       ├── frame_000000.seg.txt    ← YOLO-seg polygons
+│       ├── frame_000000.cls.txt    ← image-level classification
+│       └── classes.json            ← class id → name mapping
+└── server_projects/                ← web server projects
+    └── <project_id>/
+        ├── meta.json
+        ├── frames/
+        └── labels/
 ```
 
-Label format (`.txt`):
-```
-<class_id> <x_center> <y_center> <width> <height>
-```
-All values normalised to `[0, 1]`. One line per bounding box.
+Label format:
+
+| File | Format |
+|---|---|
+| `.txt` | `<class_id> <cx> <cy> <w> <h>` (normalised, YOLO) |
+| `.seg.txt` | `<class_id> <x1> <y1> <x2> <y2> … <xN> <yN>` (normalised, YOLO-seg) |
+| `.cls.txt` | `<class_id> <confidence>` |
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 tode/
-├── main.py                     # entry point
-├── requirements.txt
-├── core/
-│   ├── video_loader.py         # OpenCV video I/O
-│   ├── frame_extractor.py      # frame-stepping from video
-│   ├── image_loader.py         # single image / folder loader (recursive)
-│   ├── image_frame_extractor.py
-│   ├── yolo_annotator.py       # YOLO inference wrapper (thread-safe)
-│   ├── annotation_manager.py   # orchestrates the full pipeline
-│   ├── exporter.py             # YOLO / COCO dataset export
-│   └── youtube_downloader.py   # yt-dlp wrapper
-├── models/
-│   └── annotation_model.py     # BoundingBox, FrameAnnotation dataclasses
-├── storage/
-│   ├── frame_storage.py        # saves extracted frames to disk
-│   └── label_storage.py        # reads/writes YOLO .txt + classes.json
-├── ui/
-│   ├── main_window.py          # root frame, toolbar, event wiring
-│   ├── video_player.py         # canvas + navigation controls
-│   ├── annotation_panel.py     # right panel (YOLO settings, box list)
-│   ├── source_dialog.py        # tabbed open-source dialog
-│   ├── export_dialog.py        # YOLO / COCO export dialog
-│   ├── label_editor.py         # label rename dialog
-│   └── log_viewer.py           # live log window
-└── utils/
-    ├── config.py               # paths, constants, model catalogue
-    ├── image_utils.py          # draw_boxes, resize, BGR→PhotoImage
-    └── logger.py               # rotating file + coloured console + GUI queue
+├── main.py                         # desktop app entry point
+├── run_server.py                   # web server entry point
+├── requirements.txt                # desktop dependencies
+├── requirements-server.txt         # web server dependencies
+├── requirements-test.txt           # test dependencies
+│
+├── src/
+│   ├── core/
+│   │   ├── annotation_manager.py   # orchestrates the full pipeline
+│   │   ├── video_loader.py         # OpenCV video I/O
+│   │   ├── frame_extractor.py      # sequential JPEG frame extraction
+│   │   ├── image_loader.py         # single image / folder loader
+│   │   ├── image_frame_extractor.py
+│   │   ├── yolo_annotator.py       # YOLO inference wrapper (thread-safe)
+│   │   ├── exporter.py             # multi-format dataset export
+│   │   ├── base_detector.py
+│   │   ├── analytics/              # stats, report generator
+│   │   ├── detectors/              # ONNX + Ultralytics detector backends
+│   │   ├── exporters/              # YOLO / COCO / Pascal VOC / CSV / JSON
+│   │   ├── importers/              # YOLO / COCO / CSV / JSON importers
+│   │   └── pipeline/               # QueueManager, BatchProcessor, Scheduler
+│   │
+│   ├── models/
+│   │   ├── annotation_model.py     # BoundingBox, PolygonAnnotation,
+│   │   │                           # ImageClassification, FrameAnnotation
+│   │   ├── project_config.py
+│   │   ├── batch_config.py
+│   │   ├── class_definition.py
+│   │   ├── export_config.py
+│   │   └── session.py
+│   │
+│   ├── storage/
+│   │   ├── label_storage.py        # YOLO .txt / .seg.txt / .cls.txt I/O
+│   │   ├── frame_storage.py
+│   │   ├── project_storage.py
+│   │   ├── session_storage.py
+│   │   └── formats/                # YOLO / COCO / CSV / Pascal VOC / JSON
+│   │
+│   └── ui/
+│       ├── main_window.py          # root frame, toolbar, event wiring
+│       ├── video_player.py         # canvas, navigation, play/pause, polygon draw
+│       ├── annotation_panel.py     # right panel (YOLO, box list)
+│       ├── annotation_type_selector.py
+│       ├── segmentation_panel.py
+│       ├── classification_panel.py
+│       ├── source_dialog.py        # open-source dialog with step selector
+│       ├── export_dialog.py
+│       └── log_viewer.py
+│
+├── server/                         # FastAPI web server (standalone)
+│   ├── app.py
+│   ├── config.py
+│   ├── routes/                     # health, projects, frames
+│   ├── schemas/                    # Pydantic request/response models
+│   ├── services/                   # project, annotation, export services
+│   └── static/                     # index.html, app.js, style.css
+│
+├── tests/                          # pytest — 135 tests
+├── weights/                        # local .pt / .onnx model files (gitignored)
+└── output/                         # generated files (gitignored)
 ```
+
+---
+
+## Running Tests
+
+```bash
+pip install -r requirements-test.txt
+pytest tests/ -q
+```
+
+135 tests covering loaders, extractors, exporters, importers, annotation models, storage, pipeline, analytics, and utilities.
+
+---
+
+## Docker
+
+Build and run in a reproducible Linux environment with all dependencies pre-installed.
+
+```bash
+# Build
+docker build -t tode .
+
+# Smoke test
+docker run --rm tode python -c "from core import YOLOAnnotator; print('OK')"
+
+# GUI on Linux (X11)
+xhost +local:docker
+docker compose up
+```
+
+Outputs persist on the host via volume mounts (`./output/`).
+
+### GPU (NVIDIA)
+
+Install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) then uncomment `deploy.resources` in `docker-compose.yml`:
+
+```bash
+docker compose up          # GPU used automatically
+```
+
+| Platform | GUI in Docker? | Recommended |
+|---|---|---|
+| Linux | ✅ X11 forwarding | Full app |
+| Windows | ❌ Needs WSL2 + VcXsrv | Headless only |
+| macOS | ❌ No native X11 | `python main.py` in venv |
 
 ---
 
 ## License
 
-This project is licensed under **GNU AGPL-3.0** — see [`LICENSE`](LICENSE).
+Licensed under **GNU AGPL-3.0** — see [`LICENSE`](LICENSE).
 
-> **Why AGPL?** Ultralytics YOLO is itself licensed under AGPL-3.0, which is *viral copyleft*. Any project that links against `ultralytics` and is redistributed (including over a network) must be released under AGPL-3.0 too. If you need a permissive licence for closed-source / commercial use, you must either buy the [Ultralytics Enterprise Licence](https://www.ultralytics.com/license) or swap `ultralytics` for a permissively-licensed detector.
-
-See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency licence table.
-
-### What you can / cannot do
+**Why AGPL?** Ultralytics YOLO is AGPL-3.0 (viral copyleft). Any project that links against `ultralytics` and is distributed (including over a network) must also be AGPL-3.0. For closed-source or commercial use, obtain the [Ultralytics Enterprise Licence](https://www.ultralytics.com/license) or replace the detector with a permissively-licensed alternative.
 
 | Action | Allowed? |
 |---|---|
-| Use the app locally, privately | ✅ Yes |
-| Modify the source code | ✅ Yes |
-| Share modifications with the community | ✅ Yes — must include AGPL-3.0 source |
-| Run as a public web service | ✅ Yes — must publish your modifications under AGPL-3.0 |
-| Sell a closed-source / SaaS fork without releasing source | ❌ No — needs Ultralytics Enterprise Licence |
-| Train models on **your own** data and use the weights | ✅ Yes — your weights, your data |
-| Redistribute YouTube downloads | ❌ No — YouTube ToS, not our licence |
+| Use locally / privately | ✅ |
+| Modify source code | ✅ |
+| Share modifications | ✅ — must include AGPL-3.0 source |
+| Run as a public web service | ✅ — must publish modifications under AGPL-3.0 |
+| Sell a closed-source fork | ❌ — needs Ultralytics Enterprise Licence |
+| Train on your own data and keep the weights | ✅ — your data, your weights |
 
-### YouTube content
-
-`yt-dlp` only downloads — it does not grant you any rights over the content. Only use the YouTube tab with videos you own, videos under permissive licences (CC, public domain), or your own uploads. The maintainers accept no responsibility for ToS violations by end-users.
-
----
-
-## Running with Docker
-
-`Dockerfile` and `docker-compose.yml` give you a reproducible Linux environment with **all dependencies (Torch, Ultralytics, OpenCV, Tk, FFmpeg) pre-installed** — no `pip install`, no Python version issues. Use this if local install fails.
-
-### Build the image
-
-```bash
-docker build -t tode .
-```
-
-First build takes ~5–15 min and produces a ~2 GB image (Torch + Ultralytics dominate).
-
-### Run
-
-```bash
-# 1. Headless smoke test — confirms everything imports
-docker run --rm tode python -c "from core import YOLOAnnotator; print('OK')"
-
-# 2. Full GUI on Linux (X11 forwarding)
-xhost +local:docker
-docker compose up
-```
-
-Outputs persist on the host:
-- `./output/` — frame cache + working labels
-- `~/Documents/labeled_img/` — exported datasets
-
-### GPU (NVIDIA)
-
-Install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) on the host, then uncomment the `deploy.resources` block in `docker-compose.yml`.
-
-```bash
-docker compose up                                  # uses the GPU automatically
-# or for direct docker run:
-docker run --gpus all --rm tode python main.py
-```
-
-### Platform notes
-
-| Platform | GUI in Docker? | Recommended use |
-|---|---|---|
-| Linux | ✅ Yes (X11 forwarding) | Full app or headless |
-| Windows | ❌ Awkward (needs WSL2 + VcXsrv) | Headless inference only |
-| macOS | ❌ No native X11 | Headless inference only |
-
-On Windows / macOS, just run `python main.py` in a venv for the GUI.
-
----
-
-## Publishing to Docker Hub (manual)
-
-Lets community members run the app with one command instead of cloning + installing:
-
-```bash
-docker pull tedo001/tode:latest
-docker run --rm tedo001/tode python main.py
-```
-
-### One-time setup
-
-1. Create a Docker Hub account at <https://hub.docker.com>
-2. Generate an access token at <https://hub.docker.com/settings/security>
-   (Permissions: **Read & Write** — copy it, it's shown only once)
-3. On the host where you'll build, log in once:
-   ```bash
-   docker login -u tedo001
-   # paste the access token when prompted (NOT your password)
-   ```
-
-### Publish a new version
-
-```bash
-# Build with both a version tag and 'latest'
-docker build \
-    -t tedo001/tode:0.1.0 \
-    -t tedo001/tode:latest .
-
-# Push both tags
-docker push tedo001/tode:0.1.0
-docker push tedo001/tode:latest
-```
-
-Convention:
-- `:latest` — always the newest build (mutable)
-- `:0.1.0`, `:0.2.0` — immutable snapshots users can pin to
-
-### After the first push
-
-On <https://hub.docker.com/r/tedo001/tode> add:
-- **Description** — one-liner about the app
-- **Source repository link** — `https://github.com/tedo001/tode`
-  (satisfies the AGPL source-disclosure obligation automatically)
-
-### Image storage cost
-
-Public images are free, unlimited. Anonymous pulls are rate-limited to 100/6h per IP; authenticated pulls (`docker login`) are unlimited.
-
----
-
-## Packaging as a downloadable desktop app
-
-For end-users who don't have Python installed, build a single-file binary with **PyInstaller**:
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed \
-    --add-data "utils:utils" --add-data "models:models" \
-    --icon=icon.ico \
-    main.py
-# Output: dist/main(.exe) — copy alongside any required YOLO .pt weights
-```
-
-Each platform (Windows / macOS / Linux) needs its own build host. Sign and notarise on macOS, sign on Windows for SmartScreen.
-
-For an updateable release, push tagged versions to GitHub releases (`git tag v0.1.0 && git push --tags`); the README and `LICENSE` are bundled automatically.
+See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency licence table.
