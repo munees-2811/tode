@@ -6,7 +6,7 @@ import os
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from server.schemas.project import ProjectCreate, ProjectOut
+from server.schemas.project import ClassNamesUpdate, ProjectCreate, ProjectOut
 from server.services.export_service import export_project
 from server.services.project_service import ProjectService
 
@@ -39,12 +39,12 @@ def delete_project(project_id: str):
 
 
 @router.patch("/{project_id}/classes", status_code=204)
-def update_classes(project_id: str, class_names: list[str]):
-    if not _svc.update_classes(project_id, class_names):
+def update_classes(project_id: str, body: ClassNamesUpdate):
+    if not _svc.update_classes(project_id, body.class_names):
         raise HTTPException(status_code=404, detail="Project not found")
 
 
-@router.post("/{project_id}/upload", status_code=204)
+@router.post("/{project_id}/upload")
 async def upload_frames(project_id: str, files: list[UploadFile]):
     """Upload one or more image files as frames into the project."""
     proj = _svc.get(project_id)
@@ -58,6 +58,7 @@ async def upload_frames(project_id: str, files: list[UploadFile]):
         with open(dest, "wb") as fh:
             content = await file.read()
             fh.write(content)
+    return {"uploaded": len(files)}
 
 
 @router.get("/{project_id}/export")

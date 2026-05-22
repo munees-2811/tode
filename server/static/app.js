@@ -85,7 +85,7 @@ document.getElementById("create-project-form").addEventListener("submit", async 
     const p = await api("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, annotation_type: atype, classes: [] }),
+      body: JSON.stringify({ name, class_names: [] }),
     });
     _projects.unshift(p);
     renderProjects();
@@ -369,7 +369,9 @@ async function saveAnnotations() {
 document.getElementById("export-btn").addEventListener("click", async () => {
   if (!_project) return;
   try {
-    const fmt  = "yolo";
+    // Bug fix 4: read the format the user selected instead of hardcoding "yolo"
+    const fmtEl = document.getElementById("export-fmt");
+    const fmt   = fmtEl ? fmtEl.value : "yolo";
     const resp = await fetch(`/api/projects/${_project.id}/export?fmt=${fmt}`);
     if (!resp.ok) throw new Error(await resp.text());
     const blob = await resp.blob();
@@ -393,8 +395,10 @@ document.getElementById("upload-input").addEventListener("change", async e => {
   const fd = new FormData();
   files.forEach(f => fd.append("files", f));
   try {
+    // Bug fix 3: upload returns {uploaded: N} — read the count for the toast
     const result = await api(`/api/projects/${_project.id}/upload`, { method: "POST", body: fd });
-    toast(`Uploaded ${result.uploaded} frame(s)`);
+    const count = result && result.uploaded != null ? result.uploaded : files.length;
+    toast(`Uploaded ${count} frame(s)`);
     await loadFrames();
   } catch (err) { toast("Upload failed: " + err, "err"); }
   e.target.value = "";
