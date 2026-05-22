@@ -1,4 +1,3 @@
-
 """
 Canvas widget — displays frames + overlays.
 Supports two modes:
@@ -9,16 +8,14 @@ import os
 import tkinter as tk
 from collections.abc import Callable
 
-import cv2
-
 from models.annotation_model import BoundingBox, PolygonAnnotation
 from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
-from utils.image_utils import bgr_to_photoimage
+from utils.image_utils import bgr_to_photoimage, safe_imread
 
 
 class VideoPlayer(tk.Frame):
-    MODE_VIEW    = "view"
-    MODE_DRAW    = "draw"
+    MODE_VIEW = "view"
+    MODE_DRAW = "draw"
     MODE_POLYGON = "polygon"
 
     def __init__(self, master, on_frame_change: Callable = None,
@@ -26,7 +23,8 @@ class VideoPlayer(tk.Frame):
                  on_open_request: Callable = None,
                  on_box_edited: Callable = None,
                  on_box_selected: Callable = None,
-                 on_polygon_drawn: Callable = None):
+                 on_polygon_drawn: Callable = None,
+                 on_mode_change: Callable = None):
         """
         Parameters
         ----------
@@ -34,49 +32,59 @@ class VideoPlayer(tk.Frame):
         on_box_drawn     : callable(x1_norm, y1_norm, x2_norm, y2_norm)
         on_box_edited    : callable(box_index, x1_norm, y1_norm, x2_norm, y2_norm)
         on_box_selected  : callable(box_index_or_None)
+        on_mode_change   : callable(mode: str)  — "view" | "draw" | "polygon"
         """
         super().__init__(master, bg=BG_DARK)
-        self._on_change         = on_frame_change
-        self._on_box_drawn      = on_box_drawn
-        self._on_open_request   = on_open_request
-        self._on_box_edited     = on_box_edited
-        self._on_box_selected   = on_box_selected
-        self._on_polygon_drawn  = on_polygon_drawn
+        self._on_change = on_frame_change
+        self._on_box_drawn = on_box_drawn
+        self._on_open_request = on_open_request
+        self._on_box_edited = on_box_edited
+        self._on_box_selected = on_box_selected
+        self._on_polygon_drawn = on_polygon_drawn
+        self._on_mode_change = on_mode_change
         self._frame_path_provider: Callable[[int], str] | None = None
 
-        self._loader      = None
+        self._loader = None
         self._indices: list[int] = []
-        self._pos         = 0
+        self._pos = 0
         self._boxes: list[BoundingBox] = []
-        self._photo       = None
+        self._photo = None
         self._current_frame = None
 
         # ── draw-mode state ───────────────────────────────────────────────────
-        self._mode        = self.MODE_VIEW
-        self._draw_start: tuple | None = None   # (canvas_x, canvas_y)
-        self._draw_rect   = None                   # canvas rect id
+        self._mode = self.MODE_VIEW
+        self._draw_start: tuple | None = None  # (canvas_x, canvas_y)
+        self._draw_rect = None  # canvas rect id
 
         # ── edit-mode state ───────────────────────────────────────────────────
         self._selected_idx: int | None = None
-        self._edit_handle: str | None  = None
+        self._edit_handle: str | None = None
         self._edit_drag_start: tuple | None = None
 
         # ── polygon-draw state ────────────────────────────────────────────────
         self._poly_points: list[tuple[float, float]] = []  # normalised pts
-        self._poly_items: list[int] = []                    # canvas item IDs
-        self._polygons: list[PolygonAnnotation] = []        # committed polys
+        self._poly_items: list[int] = []  # canvas item IDs
+        self._polygons: list[PolygonAnnotation] = []  # committed polys
+
+        # ── semantic segmentation state ───────────────────────────────────────
+        # Maps class_name → hex colour string, set by the segmentation panel
+        self._class_color_map: dict[str, str] = {}
+        # Mask fill opacity 0.0–1.0; used for stipple selection
+        self._poly_opacity: float = 0.40
+        # Colour used for the in-progress polygon preview
+        self._active_poly_color: str = "#00ff88"
 
         # ── playback state ────────────────────────────────────────────────────
-        self._playing       = False
-        self._play_interval = 150   # ms between frames during auto-play
-        self._play_job      = None  # after() job id
+        self._playing = False
+        self._play_interval = 150  # ms between frames during auto-play
+        self._play_job = None  # after() job id
 
         # frame→canvas offset (for aspect-ratio letterboxing)
         self._frame_offset_x = 0
         self._frame_offset_y = 0
-        self._frame_scale    = 1.0
-        self._frame_w        = 1
-        self._frame_h        = 1
+        self._frame_scale = 1.0
+        self._frame_w = 1
+        self._frame_h = 1
 
         self._build()
 
@@ -125,13 +133,13 @@ class VideoPlayer(tk.Frame):
         self.canvas.bind("<Configure>", lambda _e: self._on_canvas_resize())
 
         # mouse events (always bound — gated by mode inside handlers)
-        self.canvas.bind("<ButtonPress-1>",   self._on_mouse_press)
-        self.canvas.bind("<B1-Motion>",       self._on_mouse_drag)
+        self.canvas.bind("<ButtonPress-1>", self._on_mouse_press)
+        self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_release)
         self.canvas.bind("<Double-Button-1>", self._on_double_click)
-        self.canvas.bind("<Escape>",          lambda _: self._cancel_polygon())
-        self.canvas.bind("<space>",           lambda _: self._toggle_play())
-        self.canvas.bind("<FocusIn>",         lambda _: None)  # allow key events
+        self.canvas.bind("<Escape>", lambda _: self._cancel_polygon())
+        self.canvas.bind("<space>", lambda _: self._toggle_play())
+        self.canvas.bind("<FocusIn>", lambda _: None)  # allow key events
 
         self._draw_empty_hint()
 
@@ -150,7 +158,7 @@ class VideoPlayer(tk.Frame):
         btns = tk.Frame(ctrl, bg=BG_PANEL)
         btns.pack(pady=4)
 
-        for text, cmd in [("⏮", self._go_first), ("◀", self._prev)]:
+        for text, cmd in [("⏮", self._go_first), ("⏪", self._prev)]:
             tk.Button(
                 btns, text=text, command=cmd,
                 bg=ACCENT, fg="white", relief=tk.FLAT,
@@ -205,9 +213,9 @@ class VideoPlayer(tk.Frame):
     # ── public API ────────────────────────────────────────────────────────────
     def load(self, loader, indices: list[int],
              frame_path_provider: Callable[[int], str] | None = None):
-        self._loader  = loader
+        self._loader = loader
         self._indices = indices
-        self._pos     = 0
+        self._pos = 0
         self._frame_path_provider = frame_path_provider
         self._clear_hint()
         if indices:
@@ -226,6 +234,23 @@ class VideoPlayer(tk.Frame):
         self._polygons = list(polygons)
         self._redraw()
 
+    def set_class_color_map(self, color_map: dict[str, str]) -> None:
+        """
+        Tell the canvas which hex colour to use for each class name.
+        e.g. {"road": "#E74C3C", "sky": "#3498DB"}
+        """
+        self._class_color_map = color_map
+        self._redraw()
+
+    def set_active_poly_color(self, color: str) -> None:
+        """Set the colour used for the in-progress polygon preview."""
+        self._active_poly_color = color
+
+    def set_poly_opacity(self, opacity: float) -> None:
+        """Set mask fill opacity (0.0 = outline only, 1.0 = solid fill)."""
+        self._poly_opacity = max(0.0, min(1.0, opacity))
+        self._redraw()
+
     def set_selected_box(self, idx: int | None):
         """Public — used by AnnotationPanel to sync selection from list."""
         if idx is not None and (idx < 0 or idx >= len(self._boxes)):
@@ -242,32 +267,38 @@ class VideoPlayer(tk.Frame):
     def set_view_mode(self):
         self._mode = self.MODE_VIEW
         self.canvas.config(cursor="arrow")
-        self._view_btn.config(bg=ACCENT,   fg="white")
-        self._draw_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
-        self._poly_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._view_btn.config(bg=ACCENT, fg="white")
+        self._draw_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
+        self._poly_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
         self._mode_label.config(text="  VIEW MODE — navigate freely")
         self._cancel_draw()
         self._cancel_polygon()
+        if self._on_mode_change:
+            self._on_mode_change("view")
 
     def set_draw_mode(self):
         self._mode = self.MODE_DRAW
         self.canvas.config(cursor="crosshair")
         self._draw_btn.config(bg="#e05c5c", fg="white")
-        self._view_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
-        self._poly_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._view_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
+        self._poly_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
         self._mode_label.config(text="  DRAW MODE — click & drag to annotate")
         self._cancel_polygon()
+        if self._on_mode_change:
+            self._on_mode_change("draw")
 
     def set_polygon_mode(self):
         self._mode = self.MODE_POLYGON
         self.canvas.config(cursor="crosshair")
         self._poly_btn.config(bg="#2a9d5c", fg="white")
-        self._view_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
-        self._draw_btn.config(bg=BG_DARK,  fg=TEXT_LIGHT)
+        self._view_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
+        self._draw_btn.config(bg=BG_DARK, fg=TEXT_LIGHT)
         self._mode_label.config(
             text="  POLYGON MODE — click to add pts · double-click to close"
         )
         self._cancel_draw()
+        if self._on_mode_change:
+            self._on_mode_change("polygon")
 
     def is_draw_mode(self) -> bool:
         return self._mode == self.MODE_DRAW
@@ -370,19 +401,22 @@ class VideoPlayer(tk.Frame):
             return
         # Convert normalised pts → canvas coords
         cv = [self._norm_to_canvas(x, y) for x, y in pts]
+        col = self._active_poly_color
         for cx, cy in cv:
-            dot = self.canvas.create_oval(cx - 4, cy - 4, cx + 4, cy + 4,
-                                          fill="#00ff88", outline="white", width=1)
+            dot = self.canvas.create_oval(
+                cx - 4, cy - 4, cx + 4, cy + 4,
+                fill=col, outline="white", width=1,
+            )
             self._poly_items.append(dot)
         if len(cv) >= 2:
             flat = [c for pt in cv for c in pt]
-            line = self.canvas.create_line(*flat, fill="#00ff88", width=2)
+            line = self.canvas.create_line(*flat, fill=col, width=2)
             self._poly_items.append(line)
         # Close-line hint
         if len(cv) >= 3:
             close = self.canvas.create_line(
                 cv[-1][0], cv[-1][1], cv[0][0], cv[0][1],
-                fill="#00ff88", width=1, dash=(4, 4),
+                fill=col, width=1, dash=(4, 4),
             )
             self._poly_items.append(close)
 
@@ -390,7 +424,7 @@ class VideoPlayer(tk.Frame):
         """Finalise the in-progress polygon and fire the callback."""
         if len(self._poly_points) < 3:
             return
-        pts  = list(self._poly_points)
+        pts = list(self._poly_points)
         self._cancel_polygon()
         if self._on_polygon_drawn:
             self._on_polygon_drawn(pts)
@@ -401,31 +435,31 @@ class VideoPlayer(tk.Frame):
         if self._frame_scale == 0:
             return None
         ox, oy = self._frame_offset_x, self._frame_offset_y
-        sc     = self._frame_scale
+        sc = self._frame_scale
         x = max(0.0, min((cx - ox) / sc / self._frame_w, 1.0))
         y = max(0.0, min((cy - oy) / sc / self._frame_h, 1.0))
         return x, y
 
     def _norm_to_canvas(self, nx: float, ny: float) -> tuple[float, float]:
         ox, oy = self._frame_offset_x, self._frame_offset_y
-        sc     = self._frame_scale
+        sc = self._frame_scale
         return ox + nx * self._frame_w * sc, oy + ny * self._frame_h * sc
 
     # ── box editing helpers ───────────────────────────────────────────────────
-    HANDLE_SIZE = 6   # pixels — square half-side for resize hit-test
+    HANDLE_SIZE = 6  # pixels — square half-side for resize hit-test
 
     def _box_pixel_rect(self, box):
         """Return (x1, y1, x2, y2) in canvas (not frame) coordinates."""
         ox, oy = self._frame_offset_x, self._frame_offset_y
-        sc     = self._frame_scale
+        sc = self._frame_scale
         cx = box.x_center * self._frame_w
         cy = box.y_center * self._frame_h
-        w  = box.width    * self._frame_w
-        h  = box.height   * self._frame_h
-        x1 = ox + (cx - w/2) * sc
-        y1 = oy + (cy - h/2) * sc
-        x2 = ox + (cx + w/2) * sc
-        y2 = oy + (cy + h/2) * sc
+        w = box.width * self._frame_w
+        h = box.height * self._frame_h
+        x1 = ox + (cx - w / 2) * sc
+        y1 = oy + (cy - h / 2) * sc
+        x2 = ox + (cx + w / 2) * sc
+        y2 = oy + (cy + h / 2) * sc
         return x1, y1, x2, y2
 
     def _box_at(self, cx, cy) -> int | None:
@@ -451,7 +485,7 @@ class VideoPlayer(tk.Frame):
         mx, my = (x1 + x2) / 2, (y1 + y2) / 2
         handles = {
             "nw": (x1, y1), "n": (mx, y1), "ne": (x2, y1),
-            "w":  (x1, my),                "e":  (x2, my),
+            "w": (x1, my), "e": (x2, my),
             "sw": (x1, y2), "s": (mx, y2), "se": (x2, y2),
         }
         for name, (hx, hy) in handles.items():
@@ -490,9 +524,9 @@ class VideoPlayer(tk.Frame):
 
         # Clamp to frame area
         ox, oy = self._frame_offset_x, self._frame_offset_y
-        sc     = self._frame_scale
-        fx2    = ox + self._frame_w * sc
-        fy2    = oy + self._frame_h * sc
+        sc = self._frame_scale
+        fx2 = ox + self._frame_w * sc
+        fy2 = oy + self._frame_h * sc
         x1, x2 = sorted((max(ox, min(x1, fx2)), max(ox, min(x2, fx2))))
         y1, y2 = sorted((max(oy, min(y1, fy2)), max(oy, min(y2, fy2))))
 
@@ -507,8 +541,8 @@ class VideoPlayer(tk.Frame):
         box = self._boxes[self._selected_idx]
         box.x_center = (nx1 + nx2) / 2
         box.y_center = (ny1 + ny2) / 2
-        box.width    = nx2 - nx1
-        box.height   = ny2 - ny1
+        box.width = nx2 - nx1
+        box.height = ny2 - ny1
         self._redraw()
 
         if commit and self._on_box_edited:
@@ -532,7 +566,7 @@ class VideoPlayer(tk.Frame):
             return None
 
         ox, oy = self._frame_offset_x, self._frame_offset_y
-        sc     = self._frame_scale
+        sc = self._frame_scale
 
         # Clamp to frame area
         ix0 = max(0.0, min((cx0 - ox) / sc, self._frame_w))
@@ -623,7 +657,7 @@ class VideoPlayer(tk.Frame):
     def _show_current(self):
         if not self._loader or not self._indices:
             return
-        idx   = self._indices[self._pos]
+        idx = self._indices[self._pos]
         frame = self._read_frame_reliable(idx)
         if frame is None:
             return
@@ -654,7 +688,7 @@ class VideoPlayer(tk.Frame):
             except Exception:
                 path = None
             if path and os.path.exists(path):
-                img = cv2.imread(path)
+                img = safe_imread(path)
                 if img is not None:
                     return img
         return self._loader.read_frame(idx)
@@ -662,7 +696,7 @@ class VideoPlayer(tk.Frame):
     # ── empty-state hint ──────────────────────────────────────────────────────
     def _draw_empty_hint(self):
         self.canvas.delete("hint")
-        cw = self.canvas.winfo_width()  or 640
+        cw = self.canvas.winfo_width() or 640
         ch = self.canvas.winfo_height() or 480
         cx, cy = cw // 2, ch // 2
         self.canvas.create_text(
@@ -695,21 +729,21 @@ class VideoPlayer(tk.Frame):
         if self._current_frame is None:
             return
 
-        cw = self.canvas.winfo_width()  or 640
+        cw = self.canvas.winfo_width() or 640
         ch = self.canvas.winfo_height() or 480
         fh, fw = self._current_frame.shape[:2]
 
         # Compute letterbox scale + offsets
-        scale  = min(cw / fw, ch / fh)
+        scale = min(cw / fw, ch / fh)
         nw, nh = int(fw * scale), int(fh * scale)
-        ox     = (cw - nw) // 2
-        oy     = (ch - nh) // 2
+        ox = (cw - nw) // 2
+        oy = (ch - nh) // 2
 
-        self._frame_scale    = scale
+        self._frame_scale = scale
         self._frame_offset_x = ox
         self._frame_offset_y = oy
-        self._frame_w        = fw
-        self._frame_h        = fh
+        self._frame_w = fw
+        self._frame_h = fh
 
         frame = self._current_frame
         if self._boxes:
@@ -733,7 +767,7 @@ class VideoPlayer(tk.Frame):
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2
             for hx, hy in [
                 (x1, y1), (mx, y1), (x2, y1),
-                (x1, my),           (x2, my),
+                (x1, my), (x2, my),
                 (x1, y2), (mx, y2), (x2, y2),
             ]:
                 self.canvas.create_rectangle(
@@ -741,25 +775,52 @@ class VideoPlayer(tk.Frame):
                     fill="#ffaa00", outline="white", width=1, tags="handle",
                 )
 
-        # Draw committed polygon overlays
-        _POLY_COLORS = [
+        # Draw committed polygon overlays (semantic colours + opacity)
+        _FALLBACK_COLORS = [
             "#00ff88", "#ff6644", "#44aaff", "#ffcc00",
             "#cc44ff", "#ff44aa", "#44ffcc",
         ]
+        # Choose stipple pattern based on opacity setting
+        opacity = self._poly_opacity
+        if opacity >= 0.75:
+            stipple = "gray75"
+        elif opacity >= 0.50:
+            stipple = "gray50"
+        elif opacity >= 0.25:
+            stipple = "gray25"
+        else:
+            stipple = "gray12"
+
         for pi, poly in enumerate(self._polygons):
-            color = _POLY_COLORS[pi % len(_POLY_COLORS)]
+            # Use the class colour from the panel; fall back to palette
+            color = self._class_color_map.get(
+                poly.class_name,
+                _FALLBACK_COLORS[pi % len(_FALLBACK_COLORS)],
+            )
             cv_pts = [self._norm_to_canvas(x, y) for x, y in poly.points]
-            if len(cv_pts) >= 2:
+            if len(cv_pts) >= 3:
                 flat = [c for pt in cv_pts for c in pt]
+                # Filled mask with selected opacity
                 self.canvas.create_polygon(
                     *flat,
-                    outline=color, fill=color, stipple="gray25",
+                    outline=color, fill=color, stipple=stipple,
                     width=2, tags="polygon",
                 )
-            # Label at centroid
+                # Solid outline on top so the border is always crisp
+                self.canvas.create_polygon(
+                    *flat,
+                    outline=color, fill="", width=2, tags="polygon",
+                )
+            # Class label at centroid
             if cv_pts:
                 cx_c = sum(p[0] for p in cv_pts) / len(cv_pts)
                 cy_c = sum(p[1] for p in cv_pts) / len(cv_pts)
+                # Dark shadow for readability
+                self.canvas.create_text(
+                    cx_c + 1, cy_c + 1, text=poly.class_name,
+                    fill="#000000", font=("Helvetica", 8, "bold"),
+                    tags="polygon",
+                )
                 self.canvas.create_text(
                     cx_c, cy_c, text=poly.class_name,
                     fill="white", font=("Helvetica", 8, "bold"),

@@ -7,24 +7,10 @@ AnnotationManager can work with both without changes.
 """
 import os
 
-import cv2
 import numpy as np
 
+from utils.image_utils import safe_imread as _safe_imread
 from utils.logger import get_logger
-
-
-def _safe_imread(path: str):
-    """
-    cv2.imread() silently returns None on Windows when the path contains
-    dots, spaces, or non-ASCII characters.
-    np.fromfile + imdecode works correctly on ALL Windows paths.
-    """
-    try:
-        buf = np.fromfile(path, dtype=np.uint8)
-        img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
-        return img
-    except Exception:
-        return None
 
 log = get_logger("core.ImageLoader")
 
