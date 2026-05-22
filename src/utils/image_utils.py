@@ -1,10 +1,39 @@
 """Utility functions for drawing and resizing."""
 
+import logging
+
 import cv2
 import numpy as np
 
 from models.annotation_model import BoundingBox
 from utils.config import BOX_COLOR
+
+_log = logging.getLogger(__name__)
+
+
+def safe_imread(path: str) -> np.ndarray | None:
+    """
+    Read an image from disk, correctly handling:
+      - Paths with spaces, Unicode, or non-ASCII characters (Windows & macOS)
+      - EXIF orientation tags (iPhone/macOS camera photos stored sideways)
+    PIL is tried first because it respects EXIF rotation; falls back to
+    np.fromfile + cv2.imdecode for formats PIL can't open.
+    """
+    try:
+        from PIL import Image, ImageOps
+        pil = Image.open(path)
+        pil = ImageOps.exif_transpose(pil)   # apply EXIF rotation
+        if pil.mode != "RGB":
+            pil = pil.convert("RGB")
+        return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
+    except Exception as exc:  # nosec B110 — PIL unavailable or unsupported format; falling through to cv2 fallback
+        _log.debug("PIL read failed for %s (%s), trying cv2 fallback", path, exc)
+    try:
+        buf = np.fromfile(path, dtype=np.uint8)
+        return cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    except Exception as exc:
+        _log.warning("safe_imread failed for %s: %s", path, exc)
+        return None
 
 
 def draw_boxes(bgr_frame, boxes: list[BoundingBox], color=BOX_COLOR) -> np.ndarray:
@@ -50,3 +79,4 @@ def hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
     hex_color = hex_color.lstrip("#")
     r, g, b = (int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     return b, g, r
+

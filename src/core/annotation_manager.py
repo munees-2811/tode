@@ -16,6 +16,7 @@ from models.annotation_model import (
 )
 from storage.frame_storage import FrameStorage
 from storage.label_storage import LabelStorage
+from utils.image_utils import safe_imread
 from utils.logger import get_logger
 
 log = get_logger("core.AnnotationManager")
@@ -167,7 +168,7 @@ class AnnotationManager:
         is reliable.
         """
         if ann.frame_path and os.path.exists(ann.frame_path):
-            frame = cv2.imread(ann.frame_path)
+            frame = safe_imread(ann.frame_path)
             if frame is not None:
                 return frame
             log.debug(
@@ -181,7 +182,7 @@ class AnnotationManager:
             alt_ext = ".png" if ext.lower() == ".jpg" else ".jpg"
             alt_path = root + alt_ext
             if os.path.exists(alt_path):
-                frame = cv2.imread(alt_path)
+                frame = safe_imread(alt_path)
                 if frame is not None:
                     ann.frame_path = alt_path
                     return frame

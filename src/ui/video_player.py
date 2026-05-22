@@ -8,11 +8,9 @@ import os
 import tkinter as tk
 from collections.abc import Callable
 
-import cv2
-
 from models.annotation_model import BoundingBox, PolygonAnnotation
 from utils.config import ACCENT, BG_DARK, BG_PANEL, TEXT_LIGHT
-from utils.image_utils import bgr_to_photoimage
+from utils.image_utils import bgr_to_photoimage, safe_imread
 
 
 class VideoPlayer(tk.Frame):
@@ -690,7 +688,7 @@ class VideoPlayer(tk.Frame):
             except Exception:
                 path = None
             if path and os.path.exists(path):
-                img = cv2.imread(path)
+                img = safe_imread(path)
                 if img is not None:
                     return img
         return self._loader.read_frame(idx)

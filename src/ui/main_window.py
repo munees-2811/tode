@@ -523,7 +523,6 @@ class MainWindow(tk.Frame):
         idx      = self.player.current_frame_index
         # Use class from seg_panel (semantic) if polygon mode active
         cls_name = self.seg_panel.get_selected_class()
-        color    = self.seg_panel.get_selected_color()
         class_names = self.manager.yolo.class_names
         cls_id   = next(
             (k for k, v in class_names.items()
