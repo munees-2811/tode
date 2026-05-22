@@ -799,6 +799,29 @@ class MainWindow(tk.Frame):
         label = _SOURCE_LABELS.get(src_type, src_type)
         self._source_badge.config(text=f"  Source: {label}  ")
 
+    def setup_drag_drop(self):
+        _VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv"}
+        self.master.drop_target_register("DND_Files")  # type: ignore[attr-defined]
+
+        def _on_drop(event):
+            raw = event.data.strip()
+            # tkinterdnd2 wraps paths containing spaces in { }
+            if raw.startswith("{") and raw.endswith("}"):
+                path = raw[1:-1]
+            else:
+                path = raw.split()[0]
+            ext = os.path.splitext(path)[1].lower()
+            if ext in _VIDEO_EXTS:
+                self._load_from_result({"type": "video", "path": path, "step": 1})
+            elif ext in SUPPORTED_EXTS:
+                self._load_from_result({"type": "image", "path": path, "step": 1})
+            elif os.path.isdir(path):
+                self._load_from_result({"type": "image_folder", "path": path, "step": 1})
+            else:
+                log.warning(f"Dropped file has unsupported type: {path}")
+
+        self.master.dnd_bind("<<Drop>>", _on_drop)  # type: ignore[attr-defined]
+
     def on_close(self):
         log.info("Application closing — releasing resources")
         if self.manager:
