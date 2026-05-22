@@ -25,7 +25,7 @@ class SourceDialog(tk.Toplevel):
         self.title("Open Annotation Source")
         self.resizable(False, False)
         self.configure(bg=BG_DARK)
-        self.geometry("520x360")
+        self.geometry("520x520")
         self.grab_set()
         self.focus_set()
 
@@ -113,12 +113,15 @@ class SourceDialog(tk.Toplevel):
                   font=("Consolas", 10, "bold"),
                   cursor="hand2").pack(side=tk.LEFT, padx=(0, 8))
 
-        tk.Button(btns, text="Open  →",
+        self._open_btn = tk.Button(btns, text="Open  →",
                   command=self._confirm,
                   bg=ACCENT, fg="white", relief=tk.FLAT,
                   padx=18, pady=8,
                   font=("Consolas", 10, "bold"),
-                  cursor="hand2").pack(side=tk.LEFT)
+                  cursor="hand2",
+                  state=tk.DISABLED,
+                  disabledforeground="#888899")
+        self._open_btn.pack(side=tk.LEFT)
 
         self._status_lbl = tk.Label(
             btns, text="",
@@ -215,6 +218,7 @@ class SourceDialog(tk.Toplevel):
             self._selected_path.set(path)
             self._status_lbl.config(
                 text=f"✔  {os.path.basename(path)}", fg="#55cc77")
+            self._open_btn.config(state=tk.NORMAL)
             log.info(f"User browsed — type={src_type}, path={path}")
         else:
             if not self._selected_path.get():
