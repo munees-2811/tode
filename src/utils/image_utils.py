@@ -1,14 +1,25 @@
 """Utility functions for drawing and resizing."""
 
 import logging
+import os
 
 import cv2
 import numpy as np
 
 from models.annotation_model import BoundingBox
-from utils.config import BOX_COLOR
+from utils.config import BOX_COLOR, FRAMES_DIR
 
 _log = logging.getLogger(__name__)
+
+
+def _is_extracted_frame(path: str) -> bool:
+    try:
+        return os.path.commonpath([
+            os.path.abspath(path),
+            os.path.abspath(FRAMES_DIR),
+        ]) == os.path.abspath(FRAMES_DIR)
+    except ValueError:
+        return False
 
 
 def safe_imread(path: str) -> np.ndarray | None:
@@ -16,9 +27,16 @@ def safe_imread(path: str) -> np.ndarray | None:
     Read an image from disk, correctly handling:
       - Paths with spaces, Unicode, or non-ASCII characters (Windows & macOS)
       - EXIF orientation tags (iPhone/macOS camera photos stored sideways)
-    PIL is tried first because it respects EXIF rotation; falls back to
-    np.fromfile + cv2.imdecode for formats PIL can't open.
+
+    For frames extracted by the app, use a fast cv2 read path first.
+    For other image files, keep the PIL fallback to preserve EXIF rotation.
     """
+    ext = os.path.splitext(path)[1].lower()
+    if _is_extracted_frame(path):
+        frame = cv2.imread(path)
+        if frame is not None:
+            return frame
+
     try:
         from PIL import Image, ImageOps
         pil = Image.open(path)
@@ -28,6 +46,7 @@ def safe_imread(path: str) -> np.ndarray | None:
         return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
     except Exception as exc:  # nosec B110 — PIL unavailable or unsupported format; falling through to cv2 fallback
         _log.debug("PIL read failed for %s (%s), trying cv2 fallback", path, exc)
+
     try:
         buf = np.fromfile(path, dtype=np.uint8)
         return cv2.imdecode(buf, cv2.IMREAD_COLOR)
