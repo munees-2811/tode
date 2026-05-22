@@ -408,7 +408,7 @@ Licensed under **GNU AGPL-3.0** — see [`LICENSE`](LICENSE).
 | Modify source code | ✅ |
 | Share modifications | ✅ — must include AGPL-3.0 source |
 | Run as a public web service | ✅ — must publish modifications under AGPL-3.0 |
-| Sell a closed-source fork | ❌ — needs Ultralytics Enterprise Licence |
+| Sell a closed-source fork or make it open source | ❌ — needs Ultralytics Enterprise Licence |
 | Train on your own data and keep the weights | ✅ — your data, your weights |
 
 See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full dependency licence table.
