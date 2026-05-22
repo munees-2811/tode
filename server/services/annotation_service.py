@@ -56,7 +56,7 @@ def list_frames(project_id: str) -> list[FrameOut]:
             idx = 0
         lbl = os.path.join(labels_dir, f"{stem}.txt")
         rows = YOLOFormat.read(lbl) if os.path.isfile(lbl) else []
-        result.append(FrameOut(index=idx, is_annotated=bool(rows), annotation_count=len(rows)))
+        result.append(FrameOut(frame_index=idx, is_annotated=bool(rows), annotation_count=len(rows)))
     return result
 
 

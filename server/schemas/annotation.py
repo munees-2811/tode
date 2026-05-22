@@ -42,6 +42,6 @@ class FrameAnnotationsOut(BaseModel):
 
 
 class FrameOut(BaseModel):
-    index: int
+    frame_index: int
     is_annotated: bool
     annotation_count: int

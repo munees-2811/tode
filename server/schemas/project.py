@@ -8,6 +8,7 @@ class ProjectCreate(BaseModel):
     name: str
     description: str = ""
     class_names: list[str] = []
+    annotation_type: str = "detection"
 
 
 class ClassNamesIn(BaseModel):
@@ -23,6 +24,7 @@ class ProjectOut(BaseModel):
     name: str
     description: str
     class_names: list[str]
+    annotation_type: str = "detection"
     frame_count: int
     annotated_count: int
     created_at: str

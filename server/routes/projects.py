@@ -21,7 +21,7 @@ def list_projects():
 
 @router.post("", response_model=ProjectOut, status_code=201)
 def create_project(body: ProjectCreate):
-    return _svc.create(body.name, body.description, body.class_names)
+    return _svc.create(body.name, body.description, body.class_names, body.annotation_type)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
