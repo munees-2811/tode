@@ -10,6 +10,14 @@ class ProjectCreate(BaseModel):
     class_names: list[str] = []
 
 
+class ClassNamesIn(BaseModel):
+    class_names: list[str] = []
+
+
+class ClassNamesUpdate(BaseModel):
+    class_names: list[str] = []
+
+
 class ProjectOut(BaseModel):
     id: str
     name: str
