@@ -1,10 +1,14 @@
 """Utility functions for drawing and resizing."""
 
+import logging
+
 import cv2
 import numpy as np
 
 from models.annotation_model import BoundingBox
 from utils.config import BOX_COLOR
+
+_log = logging.getLogger(__name__)
 
 
 def safe_imread(path: str) -> np.ndarray | None:
@@ -22,12 +26,13 @@ def safe_imread(path: str) -> np.ndarray | None:
         if pil.mode != "RGB":
             pil = pil.convert("RGB")
         return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
-    except Exception:
-        pass
+    except Exception as exc:  # nosec B110 — PIL unavailable or unsupported format; falling through to cv2 fallback
+        _log.debug("PIL read failed for %s (%s), trying cv2 fallback", path, exc)
     try:
         buf = np.fromfile(path, dtype=np.uint8)
         return cv2.imdecode(buf, cv2.IMREAD_COLOR)
-    except Exception:
+    except Exception as exc:
+        _log.warning("safe_imread failed for %s: %s", path, exc)
         return None
 
 
