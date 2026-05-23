@@ -35,6 +35,14 @@ class BaseDetector(ABC):
         Returns normalised BoundingBox list (x_center, y_center, w, h ∈ [0,1]).
         """
 
+    def detect_batch(self, bgr_frames: list) -> list[list[BoundingBox]]:
+        """
+        Optional batch API. Default implementation falls back to calling
+        `detect` for each frame which preserves backwards compatibility.
+        Backends can override this for faster batched inference.
+        """
+        return [self.detect(f) for f in bgr_frames]
+
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
     @abstractmethod

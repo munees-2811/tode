@@ -133,6 +133,29 @@ class YOLOAnnotator:
         )
         return boxes
 
+    def annotate_frames(self, bgr_frames: list) -> list[list[BoundingBox]]:
+        """
+        Batch annotation API. Delegates to backend `detect_batch` when
+        available which allows backends to optimise batched inference.
+        """
+        self.load()
+        log.debug(
+            f"Running batched detection — {len(bgr_frames)} frames, "
+            f"conf={self._confidence}, iou={self._iou}, "
+            f"backend={self._detector.backend_name}"
+        )
+        try:
+            boxes_list = self._detector.detect_batch(bgr_frames)
+        except Exception:
+            # Fallback: run single-frame detect for each
+            boxes_list = [self._detector.detect(f) if f is not None else [] for f in bgr_frames]
+        total = sum(len(b) for b in boxes_list)
+        log.info(
+            f"Batched detection complete — {total} object(s)  "
+            f"[{self._detector.backend_name}]"
+        )
+        return boxes_list
+
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
     def class_names(self) -> dict[int, str]:

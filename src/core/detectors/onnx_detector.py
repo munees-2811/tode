@@ -139,6 +139,53 @@ class ONNXDetector(BaseDetector):
             raw[0], scale, pad_top, pad_left, img_w, img_h
         )
 
+    def detect_batch(self, bgr_frames: list) -> list[list[BoundingBox]]:
+        """
+        Run batched inference for multiple BGR frames. Falls back to empty
+        lists for missing frames. Returns a list of BoundingBox lists.
+        """
+        if not self.is_loaded():
+            return [[] for _ in bgr_frames]
+
+        tensors = []
+        metas = []
+        valid_idx = []
+        for i, f in enumerate(bgr_frames):
+            if f is None:
+                tensors.append(None)
+                metas.append(None)
+                continue
+            tensor, scale, pad_top, pad_left = self._preprocess(f)
+            tensors.append(tensor)
+            metas.append((scale, pad_top, pad_left, f.shape[1], f.shape[0]))
+            valid_idx.append(i)
+
+        if not valid_idx:
+            return [[] for _ in bgr_frames]
+
+        batch = np.concatenate([t for t in tensors if t is not None], axis=0)
+        input_name = self._session.get_inputs()[0].name
+        try:
+            raw = self._session.run(None, {input_name: batch})
+        except Exception as exc:
+            log.error(f"[ONNX] batched inference error: {exc}", exc_info=True)
+            return [[] for _ in bgr_frames]
+
+        outputs = raw[0]
+        results = [[] for _ in bgr_frames]
+        out_idx = 0
+        for i in range(len(bgr_frames)):
+            if metas[i] is None:
+                # preserve None frames as empty detection lists
+                results[i] = []
+                continue
+            scale, pad_top, pad_left, img_w, img_h = metas[i]
+            out_i = outputs[out_idx:out_idx+1]
+            results[i] = self._postprocess(out_i, scale, pad_top, pad_left, img_w, img_h)
+            out_idx += 1
+
+        return results
+
     # ── preprocessing ─────────────────────────────────────────────────────────
     @staticmethod
     def _preprocess(

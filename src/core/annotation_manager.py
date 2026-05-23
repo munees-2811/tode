@@ -198,11 +198,47 @@ class AnnotationManager:
 
     def auto_annotate_all(self, progress_callback=None):
         indices = self.all_frame_indices()
-        log.info(f"Auto-annotating all {len(indices)} frames…")
-        for i, idx in enumerate(indices):
-            self.auto_annotate_frame(idx)
+        total = len(indices)
+        log.info(f"Auto-annotating all {total} frames (batched)…")
+
+        # Tune this for memory / speed tradeoff. Smaller batches use less RAM
+        # but incur more Python overhead. 8 is a reasonable default.
+        batch_size = 8
+        for bstart in range(0, total, batch_size):
+            batch_idx = indices[bstart:bstart + batch_size]
+            frames = []
+            for idx in batch_idx:
+                ann = self._annotations.get(idx)
+                if ann is None:
+                    frame, saved_path = self.extractor.extract_single(idx)
+                    if ann is None:
+                        ann = FrameAnnotation(frame_index=idx, frame_path=saved_path)
+                        self._annotations[idx] = ann
+                    frames.append(frame)
+                else:
+                    frame = self._read_frame_reliable(ann, idx)
+                    frames.append(frame)
+
+            # Run batched YOLO; detector implementations may optimise this
+            boxes_list = self.yolo.annotate_frames(frames)
+
+            # Apply detections back into annotations
+            for rel_i, idx in enumerate(batch_idx):
+                ann = self._annotations.get(idx)
+                if ann is None:
+                    ann = FrameAnnotation(frame_index=idx)
+                    self._annotations[idx] = ann
+                ann.clear_boxes()
+                boxes = boxes_list[rel_i] if rel_i < len(boxes_list) else []
+                for box in boxes:
+                    ann.add_box(box)
+                # Refresh annotated flag
+                ann._refresh_annotated()
+
+            # progress callback (converted to absolute)
             if progress_callback:
-                progress_callback(i + 1, len(indices))
+                progress_callback(min(bstart + batch_size, total), total)
+
         log.info(
             f"Bulk annotation complete — "
             f"{self.annotated_count}/{self.total_count} annotated"

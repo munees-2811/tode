@@ -87,6 +87,49 @@ class UltralyticsDetector(BaseDetector):
         log.info(f"[Ultralytics] {len(boxes)} detection(s)")
         return boxes
 
+    def detect_batch(self, bgr_frames: list) -> list[list[BoundingBox]]:
+        """
+        Run batched inference using the Ultralytics `predict` API which accepts
+        a list of images. Returns a list of per-image BoundingBox lists.
+        """
+        if not self.is_loaded():
+            return [[] for _ in bgr_frames]
+        try:
+            results = self._model.predict(
+                source  = bgr_frames,
+                conf    = self.confidence,
+                iou     = self.iou,
+                verbose = False,
+            )
+        except Exception as exc:
+            log.error(f"[Ultralytics] batched inference error: {exc}", exc_info=True)
+            return [[] for _ in bgr_frames]
+
+        all_boxes: list[list[BoundingBox]] = []
+        for result in results:
+            img_h, img_w = result.orig_shape if hasattr(result, 'orig_shape') else (None, None)
+            if img_h is None:
+                # Fallback to first input shape if orig_shape not present
+                img_h, img_w = bgr_frames[0].shape[:2]
+            boxes: list[BoundingBox] = []
+            for box in result.boxes:
+                cls_id   = int(box.cls[0])
+                cls_name = result.names[cls_id]
+                conf     = float(box.conf[0])
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                boxes.append(BoundingBox(
+                    class_id   = cls_id,
+                    class_name = cls_name,
+                    x_center   = ((x1 + x2) / 2) / img_w,
+                    y_center   = ((y1 + y2) / 2) / img_h,
+                    width      = (x2 - x1)        / img_w,
+                    height     = (y2 - y1)        / img_h,
+                    confidence = conf,
+                ))
+            all_boxes.append(boxes)
+
+        return all_boxes
+
     # ── metadata ──────────────────────────────────────────────────────────────
     @property
     def class_names(self) -> dict[int, str]:
