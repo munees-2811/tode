@@ -82,8 +82,6 @@ RUN pip install -r requirements.txt -r requirements-server.txt
 
 COPY . .
 
-VOLUME ["/app/output"]
-
 EXPOSE 8000
 
-CMD ["python", "run_server.py"]
+CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "server.app:app"]
