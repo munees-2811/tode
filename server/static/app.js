@@ -13,6 +13,7 @@ let _annType      = "bbox"; // "bbox" | "seg" | "cls"
 let _drawing      = false;
 let _drawStart    = null;   // {x, y} normalised for bbox
 let _polyPts      = [];     // normalised points for polygon-in-progress
+let _classNames   = [];     // project class names list
 
 const COLORS = ["#6c63ff","#ff6584","#43d9ad","#f9ca24","#f0932b","#eb4d4b","#6ab04c","#22a6b3"];
 
@@ -39,6 +40,28 @@ function showView(id) {
   document.getElementById(id).classList.add("active");
 }
 
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function classIdFor(name) {
+  const idx = _classNames.indexOf(name);
+  if (idx !== -1) return idx;
+  _classNames.push(name);
+  return _classNames.length - 1;
+}
+
+// ── frame counter ─────────────────────────────────────────────────────────────
+function updateFrameCounter() {
+  const el = document.getElementById("frame-counter");
+  if (!el) return;
+  if (_frames.length === 0) {
+    el.textContent = "Frame 0 / 0";
+  } else {
+    el.textContent = `Frame ${_frameIdx + 1} / ${_frames.length}`;
+  }
+}
+
 // ── projects list ─────────────────────────────────────────────────────────────
 async function loadProjects() {
   _projects = await api("/api/projects");
@@ -49,7 +72,7 @@ function renderProjects() {
   const grid = document.getElementById("projects-grid");
   grid.innerHTML = "";
   if (!_projects.length) {
-    grid.innerHTML = '<p style="color:var(--text2);grid-column:1/-1">No projects yet — click ＋ New Project.</p>';
+    grid.innerHTML = '<p style="color:var(--text2);grid-column:1/-1">No projects yet — click + New Project.</p>';
     return;
   }
   _projects.forEach(p => {
@@ -57,16 +80,12 @@ function renderProjects() {
     card.className = "project-card";
     card.innerHTML = `
       <h3>${esc(p.name)}</h3>
-      <p class="meta">${p.frame_count ?? 0} frames &nbsp;·&nbsp; ${p.annotation_type}</p>
+      <p class="meta">${p.frame_count ?? 0} frames &nbsp;&middot;&nbsp; ${esc(p.annotation_type || "detection")}</p>
       <p class="meta">${new Date(p.created_at).toLocaleDateString()}</p>
     `;
     card.addEventListener("click", () => openProject(p));
     grid.appendChild(card);
   });
-}
-
-function esc(s) {
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
 // ── new project modal ─────────────────────────────────────────────────────────
@@ -80,17 +99,22 @@ document.getElementById("create-project-form").addEventListener("submit", async 
   e.preventDefault();
   const name  = document.getElementById("proj-name").value.trim();
   const atype = document.getElementById("proj-type").value;
+  const classesRaw = document.getElementById("proj-classes").value.trim();
+  const classNames = classesRaw
+    ? classesRaw.split(",").map(s => s.trim()).filter(Boolean)
+    : [];
   if (!name) return;
   try {
     const p = await api("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, class_names: [] }),
+      body: JSON.stringify({ name, annotation_type: atype, class_names: classNames }),
     });
     _projects.unshift(p);
     renderProjects();
     document.getElementById("new-project-modal").classList.remove("open");
     document.getElementById("proj-name").value = "";
+    document.getElementById("proj-classes").value = "";
     toast("Project created");
   } catch (err) { toast(String(err), "err"); }
 });
@@ -101,6 +125,7 @@ async function openProject(p) {
   _frames  = [];
   _frameIdx = 0;
   _annotations = { boxes: [], polygons: [], classifications: [] };
+  _classNames = p.class_names || [];
 
   document.getElementById("detail-title").textContent = p.name;
   document.getElementById("ann-type-tabs").querySelector('[data-type="bbox"]').click();
@@ -113,6 +138,7 @@ async function loadFrames() {
   try {
     _frames = await api(`/api/projects/${_project.id}/frames`);
     renderFrameStrip();
+    updateFrameCounter();
     if (_frames.length) await selectFrame(0);
   } catch (err) { toast("Could not load frames: " + err, "err"); }
 }
@@ -125,6 +151,7 @@ function renderFrameStrip() {
     img.className = "frame-thumb";
     img.src = `/api/projects/${_project.id}/frames/${f.frame_index}/image`;
     img.title = `Frame ${f.frame_index}`;
+    if (i === _frameIdx) img.classList.add("active");
     img.addEventListener("click", () => selectFrame(i));
     strip.appendChild(img);
   });
@@ -136,6 +163,7 @@ async function selectFrame(i) {
   document.querySelectorAll(".frame-thumb").forEach((el, j) => {
     el.classList.toggle("active", j === i);
   });
+  updateFrameCounter();
   // load annotations
   const f = _frames[i];
   try {
@@ -146,6 +174,14 @@ async function selectFrame(i) {
   renderCanvas();
   renderAnnList();
 }
+
+// ── prev / next frame buttons ─────────────────────────────────────────────────
+document.getElementById("prev-frame-btn").addEventListener("click", () => {
+  if (_frameIdx > 0) selectFrame(_frameIdx - 1);
+});
+document.getElementById("next-frame-btn").addEventListener("click", () => {
+  if (_frameIdx < _frames.length - 1) selectFrame(_frameIdx + 1);
+});
 
 // ── canvas ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById("annotation-canvas");
@@ -158,8 +194,12 @@ async function renderCanvas() {
   const imgEl = new Image();
   imgEl.onload = () => {
     _img = imgEl;
-    canvas.width  = imgEl.naturalWidth;
-    canvas.height = imgEl.naturalHeight;
+    const container = document.getElementById("canvas-area");
+    const maxW = container.clientWidth  - 16;
+    const maxH = container.clientHeight - 16;
+    const scale = Math.min(1, maxW / imgEl.naturalWidth, maxH / imgEl.naturalHeight);
+    canvas.width  = Math.round(imgEl.naturalWidth  * scale);
+    canvas.height = Math.round(imgEl.naturalHeight * scale);
     drawAll();
   };
   imgEl.src = `/api/projects/${_project.id}/frames/${f.frame_index}/image`;
@@ -168,7 +208,7 @@ async function renderCanvas() {
 function drawAll() {
   if (!_img) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(_img, 0, 0);
+  ctx.drawImage(_img, 0, 0, canvas.width, canvas.height);
 
   const W = canvas.width, H = canvas.height;
 
@@ -227,10 +267,7 @@ function drawAll() {
     });
   }
 
-  // in-progress bbox
-  if (_annType === "bbox" && _drawing && _drawStart) {
-    // drawn live in mousemove handler
-  }
+  // in-progress bbox drawn live in mousemove handler
 }
 
 // canvas interaction
@@ -264,7 +301,8 @@ canvas.addEventListener("mouseup", e => {
   const bw  = Math.abs(x - sx), bh = Math.abs(y - sy);
   if (bw < 0.005 || bh < 0.005) { drawAll(); return; }
   const cls = document.getElementById("class-input").value.trim() || "object";
-  _annotations.boxes.push({ class_id: 0, class_name: cls, x_center: x_c, y_center: y_c, width: bw, height: bh, confidence: 1 });
+  const cid = classIdFor(cls);
+  _annotations.boxes.push({ class_id: cid, class_name: cls, x_center: x_c, y_center: y_c, width: bw, height: bh, confidence: 1 });
   drawAll();
   renderAnnList();
   saveAnnotations();
@@ -273,7 +311,8 @@ canvas.addEventListener("mouseup", e => {
 canvas.addEventListener("dblclick", e => {
   if (_annType !== "seg" || _polyPts.length < 3) return;
   const cls = document.getElementById("class-input").value.trim() || "object";
-  _annotations.polygons.push({ class_id: 0, class_name: cls, points: [..._polyPts], confidence: 1 });
+  const cid = classIdFor(cls);
+  _annotations.polygons.push({ class_id: cid, class_name: cls, points: [..._polyPts], confidence: 1 });
   _polyPts = [];
   drawAll();
   renderAnnList();
@@ -313,7 +352,8 @@ document.getElementById("ann-type-tabs").addEventListener("click", e => {
 // ── classification ────────────────────────────────────────────────────────────
 document.getElementById("apply-cls-btn").addEventListener("click", () => {
   const cls = document.getElementById("class-input").value.trim() || "object";
-  _annotations.classifications = [{ class_id: 0, class_name: cls, confidence: 1 }];
+  const cid = classIdFor(cls);
+  _annotations.classifications = [{ class_id: cid, class_name: cls, confidence: 1 }];
   renderAnnList();
   saveAnnotations();
   toast("Classification saved");
@@ -365,11 +405,55 @@ async function saveAnnotations() {
   } catch (err) { toast("Save failed: " + err, "err"); }
 }
 
+// ── YOLO auto-annotate ────────────────────────────────────────────────────────
+const yoloBtn  = document.getElementById("yolo-btn");
+const yoloConf = document.getElementById("yolo-conf");
+const yoloVal  = document.getElementById("yolo-conf-val");
+
+yoloConf.addEventListener("input", () => {
+  yoloVal.textContent = parseFloat(yoloConf.value).toFixed(2);
+});
+
+yoloBtn.addEventListener("click", async () => {
+  if (!_project || !_frames.length) return;
+  const f    = _frames[_frameIdx];
+  const conf = parseFloat(yoloConf.value).toFixed(2);
+  yoloBtn.disabled  = true;
+  yoloBtn.textContent = "Running…";
+  try {
+    const result = await api(
+      `/api/projects/${_project.id}/frames/${f.frame_index}/auto-annotate?conf=${conf}`,
+      { method: "POST" }
+    );
+    if (result.error) {
+      toast("YOLO: " + result.error, "err");
+    } else {
+      const boxes = result.boxes || [];
+      boxes.forEach(b => {
+        _annotations.boxes.push({
+          class_id:   classIdFor(b.class_name),
+          class_name: b.class_name,
+          x_center:   b.x_center,
+          y_center:   b.y_center,
+          width:      b.width,
+          height:     b.height,
+          confidence: b.confidence,
+        });
+      });
+      drawAll();
+      renderAnnList();
+      saveAnnotations();
+      toast(`Auto-annotated: ${boxes.length} box(es)`);
+    }
+  } catch (err) { toast("YOLO failed: " + err, "err"); }
+  yoloBtn.disabled    = false;
+  yoloBtn.textContent = "⚡ Auto YOLO";
+});
+
 // ── export ────────────────────────────────────────────────────────────────────
 document.getElementById("export-btn").addEventListener("click", async () => {
   if (!_project) return;
   try {
-    // Bug fix 4: read the format the user selected instead of hardcoding "yolo"
     const fmtEl = document.getElementById("export-fmt");
     const fmt   = fmtEl ? fmtEl.value : "yolo";
     const resp = await fetch(`/api/projects/${_project.id}/export?fmt=${fmt}`);
@@ -395,7 +479,6 @@ document.getElementById("upload-input").addEventListener("change", async e => {
   const fd = new FormData();
   files.forEach(f => fd.append("files", f));
   try {
-    // Bug fix 3: upload returns {uploaded: N} — read the count for the toast
     const result = await api(`/api/projects/${_project.id}/upload`, { method: "POST", body: fd });
     const count = result && result.uploaded != null ? result.uploaded : files.length;
     toast(`Uploaded ${count} frame(s)`);

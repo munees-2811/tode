@@ -57,7 +57,28 @@ RUN pip install -r requirements.txt
 # Layer 2: application code
 COPY . .
 
-# Persisted state — annotations + frame cache + downloaded videos
-VOLUME ["/app/output", "/root/Documents/labeled_img"]
-
 CMD ["python", "main.py"]
+
+# ── web server stage ───────────────────────────────────────────────────────────
+FROM python:3.12-slim AS web
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH="/app/src"
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt requirements-server.txt ./
+RUN pip install -r requirements.txt -r requirements-server.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["python", "run_server.py"]

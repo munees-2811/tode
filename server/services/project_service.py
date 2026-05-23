@@ -50,18 +50,25 @@ class ProjectService:
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def create(self, name: str, description: str = "", class_names: list[str] | None = None) -> dict:
+    def create(
+        self,
+        name: str,
+        description: str = "",
+        class_names: list[str] | None = None,
+        annotation_type: str = "detection",
+    ) -> dict:
         project_id = name.lower().replace(" ", "_") + "_" + datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         pdir = self._project_dir(project_id)
         for sub in ("frames", "labels"):
             os.makedirs(os.path.join(pdir, sub), exist_ok=True)
 
         meta = {
-            "id":           project_id,
-            "name":         name,
-            "description":  description,
-            "class_names":  class_names or [],
-            "created_at":   datetime.now(UTC).isoformat(),
+            "id":              project_id,
+            "name":            name,
+            "description":     description,
+            "class_names":     class_names or [],
+            "annotation_type": annotation_type,
+            "created_at":      datetime.now(UTC).isoformat(),
         }
         self._write_meta(project_id, meta)
         return {**meta, "frame_count": 0, "annotated_count": 0}
@@ -73,6 +80,7 @@ class ProjectService:
         for name in sorted(os.listdir(self._root)):
             meta = self._read_meta(name)
             if meta:
+                meta.setdefault("annotation_type", "detection")
                 fc, ac = self._frame_count(name)
                 result.append({**meta, "frame_count": fc, "annotated_count": ac})
         return result
@@ -81,6 +89,7 @@ class ProjectService:
         meta = self._read_meta(project_id)
         if not meta:
             return None
+        meta.setdefault("annotation_type", "detection")
         fc, ac = self._frame_count(project_id)
         return {**meta, "frame_count": fc, "annotated_count": ac}
 
